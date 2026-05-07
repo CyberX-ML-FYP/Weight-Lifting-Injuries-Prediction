@@ -1,0 +1,20 @@
+"""Bar path analysis module for the weight lifting injury prediction project."""
+
+from .config import BarPathConfig
+from .video_loader import load_video
+from .landmark_extractor import extract_landmarks
+from .cleaner import clean_coordinates
+from .feature_extractor import extract_bar_path_features
+from .storage import save_cleaned_coordinates, save_features
+from .pipeline import process_all_videos
+
+__all__ = [
+    "BarPathConfig",
+    "load_video",
+    "extract_landmarks",
+    "clean_coordinates",
+    "extract_bar_path_features",
+    "save_cleaned_coordinates",
+    "save_features",
+    "process_all_videos",
+]

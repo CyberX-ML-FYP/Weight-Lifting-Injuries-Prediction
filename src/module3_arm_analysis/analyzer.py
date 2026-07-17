@@ -66,6 +66,32 @@ def draw_landmarks(frame, landmarks):
         cv2.circle(frame, (x, y), 4, (255, 255, 255), 1, cv2.LINE_AA)
 
 
+def select_center_pose(pose_landmarks_list):
+    """Select the detected pose whose torso center is closest to frame center."""
+    if not pose_landmarks_list:
+        return None
+
+    torso_indices = [11, 12, 23, 24]
+    best_pose = None
+    best_distance = float("inf")
+
+    for landmarks in pose_landmarks_list:
+        if not landmarks:
+            continue
+
+        x_values = [landmarks[idx].x for idx in torso_indices if idx < len(landmarks)]
+        if len(x_values) != len(torso_indices):
+            continue
+
+        avg_x = sum(x_values) / len(x_values)
+        distance_to_center = abs(avg_x - 0.5)
+        if distance_to_center < best_distance:
+            best_distance = distance_to_center
+            best_pose = landmarks
+
+    return best_pose
+
+
 def analyze_video(video_path, output_csv_path, show_display=True):
     """
     Process a Clean & Jerk video and produce a CSV of upper-limb features.
@@ -83,7 +109,7 @@ def analyze_video(video_path, output_csv_path, show_display=True):
     options = vision.PoseLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
         running_mode=vision.RunningMode.VIDEO,
-        num_poses=1,
+        num_poses=5,
         min_pose_detection_confidence=MIN_DETECTION_CONF,
         min_pose_presence_confidence=MIN_DETECTION_CONF,
         min_tracking_confidence=MIN_TRACKING_CONF,
@@ -115,12 +141,17 @@ def analyze_video(video_path, output_csv_path, show_display=True):
             frame_idx += 1
 
             if result.pose_landmarks:
-                for landmark_list in result.pose_landmarks:
+                landmark_list = select_center_pose(result.pose_landmarks)
+                if landmark_list is not None:
                     draw_landmarks(frame, landmark_list)
 
                     def get_xy(idx):
                         lm = landmark_list[idx]
                         return [lm.x * w, lm.y * h]
+
+                    def get_visibility(idx):
+                        lm = landmark_list[idx]
+                        return float(getattr(lm, "visibility", 1.0))
 
                     L_shoulder = get_xy(LEFT_SHOULDER)
                     L_elbow    = get_xy(LEFT_ELBOW)
@@ -130,16 +161,30 @@ def analyze_video(video_path, output_csv_path, show_display=True):
                     R_elbow    = get_xy(RIGHT_ELBOW)
                     R_wrist    = get_xy(RIGHT_WRIST)
                     R_hip      = get_xy(RIGHT_HIP)
+                    L_elbow_vis = get_visibility(LEFT_ELBOW)
+                    R_elbow_vis = get_visibility(RIGHT_ELBOW)
+                    L_wrist_vis = get_visibility(LEFT_WRIST)
+                    R_wrist_vis = get_visibility(RIGHT_WRIST)
 
                     left_elbow_angle     = calculate_angle(L_shoulder, L_elbow, L_wrist)
                     right_elbow_angle    = calculate_angle(R_shoulder, R_elbow, R_wrist)
                     left_shoulder_angle  = calculate_angle(L_hip, L_shoulder, L_elbow)
                     right_shoulder_angle = calculate_angle(R_hip, R_shoulder, R_elbow)
                     symmetry_diff        = round(abs(left_elbow_angle - right_elbow_angle), 1)
+                    low_visibility_flag  = int(
+                        min(L_elbow_vis, R_elbow_vis, L_wrist_vis, R_wrist_vis) < 0.5
+                    )
 
                     symmetry_flag = symmetry_diff > SYMMETRY_THRESHOLD
                     lockout_flag  = (left_elbow_angle  < LOCKOUT_THRESHOLD or
                                      right_elbow_angle < LOCKOUT_THRESHOLD)
+
+                    # Wrist y-pixel coordinates (landmarks 15 / 16). In image
+                    # space a smaller y = higher position = bar overhead, which
+                    # lets us locate the jerk lockout moment downstream.
+                    left_wrist_y  = round(L_wrist[1], 1)
+                    right_wrist_y = round(R_wrist[1], 1)
+                    avg_wrist_y   = round((left_wrist_y + right_wrist_y) / 2, 1)
 
                     data.append({
                         "frame"                : frame_idx,
@@ -148,8 +193,12 @@ def analyze_video(video_path, output_csv_path, show_display=True):
                         "left_shoulder_angle"  : left_shoulder_angle,
                         "right_shoulder_angle" : right_shoulder_angle,
                         "symmetry_diff"        : symmetry_diff,
+                        "left_wrist_y"         : left_wrist_y,
+                        "right_wrist_y"        : right_wrist_y,
+                        "avg_wrist_y"          : avg_wrist_y,
                         "asymmetry_flag"       : int(symmetry_flag),
                         "lockout_flag"         : int(lockout_flag),
+                        "low_visibility_flag"  : low_visibility_flag,
                     })
 
                     if show_display:
@@ -172,7 +221,8 @@ def analyze_video(video_path, output_csv_path, show_display=True):
                                     (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
 
             if show_display:
-                display_frame = cv2.resize(frame, (540, 960))
+                display_height = max(1, int(h * 1280 / w))
+                display_frame = cv2.resize(frame, (1280, display_height))
                 cv2.imshow("Module 3 — Upper Limb Analysis", display_frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
@@ -185,20 +235,22 @@ def analyze_video(video_path, output_csv_path, show_display=True):
     os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
     df.to_csv(output_csv_path, index=False)
 
-    print(f"\n===== ANALYSIS SUMMARY =====")
+    print("\n===== ANALYSIS SUMMARY =====")
     print(f"Total frames analysed  : {len(df)}")
-    print(f"Avg Left Elbow Angle   : {df['left_elbow_angle'].mean():.1f}°")
-    print(f"Avg Right Elbow Angle  : {df['right_elbow_angle'].mean():.1f}°")
-    print(f"Avg Symmetry Diff      : {df['symmetry_diff'].mean():.1f}°")
+    print(f"Avg Left Elbow Angle   : {df['left_elbow_angle'].mean():.1f} deg")
+    print(f"Avg Right Elbow Angle  : {df['right_elbow_angle'].mean():.1f} deg")
+    print(f"Avg Symmetry Diff      : {df['symmetry_diff'].mean():.1f} deg")
     print(f"Asymmetry flags        : {df['asymmetry_flag'].sum()} frames")
     print(f"Incomplete lockout     : {df['lockout_flag'].sum()} frames")
-    print(f"CSV saved → {output_csv_path}")
+    print(f"CSV saved -> {output_csv_path}")
 
     return df
 
 
 if __name__ == "__main__":
     # Example usage
-    VIDEO_INPUT = "data/raw_videos/cleanjerk_sample.mov"
-    CSV_OUTPUT  = "data/processed/arm_analysis_sample.csv"
+    # VIDEO_INPUT = "data/raw_videos/cleanjerk2.mov"
+    # CSV_OUTPUT  = "data/processed/arm_analysis_sample.csv"
+    VIDEO_INPUT = "data/raw_videos/side/1good.MOV"
+    CSV_OUTPUT  = "data/processed/1good_side.csv"
     analyze_video(VIDEO_INPUT, CSV_OUTPUT, show_display=True)

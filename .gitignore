@@ -90,3 +90,9 @@ target/
 .mypy_cache/
 
 /data/raw/videos/
+
+# Module 3 raw lift videos (large binary files; not meant for git history)
+/data/raw_videos/
+
+# MediaPipe pose model (auto-downloaded by analyzer.py on first run)
+src/module3_arm_analysis/pose_landmarker_full.task

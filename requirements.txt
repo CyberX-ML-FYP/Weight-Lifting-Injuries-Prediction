@@ -11,3 +11,7 @@ jupyter-client==7.4.7
 jupyter-core==5.1.0
 matplotlib==3.6.2
 pyarrow
+
+scikit-learn
+xgboost
+joblib

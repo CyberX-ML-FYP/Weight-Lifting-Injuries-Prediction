@@ -1,0 +1,17 @@
+# Use a Python 3.11.5 virtual environment
+numpy==1.23.5
+pandas>=2.0.0
+dask==2026.3.0
+scipy==1.11.3
+opencv-python==4.8.1.78
+mediapipe==0.10.5
+ipykernel==6.17.1
+ipython==8.7.0
+jupyter-client==7.4.7
+jupyter-core==5.1.0
+matplotlib==3.6.2
+pyarrow
+
+scikit-learn
+xgboost
+joblib

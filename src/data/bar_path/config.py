@@ -11,6 +11,7 @@ class BarPathConfig:
     interim_output_dir: Path = field(init=False)
     processed_output_dir: Path = field(init=False)
     features_output_path: Path = field(init=False)
+    video_extensions: tuple[str, ...] = (".mp4", ".mov")
     visibility_threshold: float = 0.5
     outlier_threshold: float = 50.0
     smoothing_window: int = 7
@@ -18,7 +19,9 @@ class BarPathConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "raw_video_dir", self.root_dir / "data" / "raw" / "videos"
+            self,
+            "raw_video_dir",
+            self.root_dir / "data" / "raw" / "videos" / "front",
         )
         object.__setattr__(
             self, "interim_output_dir", self.root_dir / "data" / "interim" / "bar_path"

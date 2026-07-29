@@ -1,15 +1,20 @@
 """
 Module 3 — Feature Extractor
-Builds one-row-per-lift dataset by merging side/front analysis CSV files.
+Builds one-row-per-lift dataset by merging side/front/angle analysis CSVs.
 
-Instead of looking only at the final phase of the lift, this analyses the
-WHOLE lift: every video is split into three equal phase windows
-(EARLY 0-33%, MIDDLE 33-66%, FINAL 66-100%), plus whole-lift stability
-features and a jerk-moment (lockout) snapshot located from wrist height.
+Analyses the WHOLE lift: every video is split into three equal phase
+windows (EARLY 0-33%, MIDDLE 33-66%, FINAL 66-100%), plus whole-lift
+stability features and a jerk-moment (lockout) snapshot located from
+wrist height.
+
+Side and angle views show elbow flexion (the far arm is often hidden, so
+symmetry from these is unreliable). Front view is the only source of
+bilateral symmetry, since both arms are visible.
 
 Author: Pasindu (214027H)
 """
 import os
+import re
 import numpy as np
 import pandas as pd
 
@@ -18,15 +23,60 @@ from src.module3_arm_analysis.config import DATA_DIR
 
 PHASES = ("early", "middle", "final")
 
+# Camera views that show elbow flexion well enough to extract elbow-angle
+# features from (side = pure profile, angle = oblique 3/4 view).
+ELBOW_VIEWS = ("side", "angle")
 
-def _extract_label_from_lift_id(lift_id):
-    """Map lift id to class label: good -> 0, bad -> 1."""
-    name = lift_id.lower()
-    if "good" in name:
-        return 0
-    if "bad" in name:
-        return 1
-    return None
+_LEADING_NUMBER = re.compile(r"^(\d+)")
+
+
+def _parse_lift_id_and_label(raw_stem):
+    """
+    Split a raw filename stem (e.g. '64Good', '16gooda', '9bad') into:
+      - lift_id: "<number><good|bad>", used to join side/front/angle views
+        of the SAME lift. Built from the number AND the label -- not the
+        number alone -- because two different naming conventions are
+        mixed in this dataset: an older test batch numbers "good" and
+        "bad" lifts with independent counters (its "1bad" and "1good"
+        are two unrelated lifts, not two views of "lift 1"), while newer
+        uploads use one global counter per physical lift. Combining
+        number+label handles both: it keeps "1bad"/"1good" distinct,
+        while still merging case/typo variants of the same lift
+        ("16good" vs "16gooda", "64Good" vs "64good") since only the
+        label *word* differs there, not the label itself.
+      - label: 0 (good) / 1 (bad) / None, read from the label text.
+    """
+    stem = raw_stem.strip()
+    match = _LEADING_NUMBER.match(stem)
+    number = match.group(1) if match else stem
+
+    lower = stem.lower()
+    if "good" in lower:
+        label = 0
+    elif "bad" in lower:
+        label = 1
+    else:
+        label = None
+
+    label_word = {0: "good", 1: "bad"}.get(label, "unlabeled")
+    lift_id = f"{number}{label_word}"
+
+    return lift_id, label
+
+
+def _collect_labels(processed_dir):
+    """Scan every per-frame CSV filename and build a lift_id -> label map."""
+    labels = {}
+    for filename in sorted(os.listdir(processed_dir)):
+        lower = filename.lower()
+        for suffix in ("_side.csv", "_front.csv", "_angle.csv"):
+            if lower.endswith(suffix):
+                raw_stem = filename[: -len(suffix)]
+                lift_id, label = _parse_lift_id_and_label(raw_stem)
+                if label is not None:
+                    labels[lift_id] = label
+                break
+    return labels
 
 
 def _phase_windows(df):
@@ -52,11 +102,17 @@ def _lockout_index(df):
     return int(np.argmin(df["avg_wrist_y"].to_numpy()))
 
 
-def _build_side_features(processed_dir):
-    """Build per-lift side-view features (elbow phase windows + lockout snapshot)."""
+def _build_elbow_features(processed_dir, view):
+    """
+    Build per-lift elbow/lockout features from *_<view>.csv files
+    (side or angle view). Columns are prefixed with the view name so
+    side and angle features never collide when merged.
+    """
+    prefix = f"{view}_"
+    suffix = f"_{view}.csv"
     rows = []
     for filename in sorted(os.listdir(processed_dir)):
-        if not filename.lower().endswith("_side.csv"):
+        if not filename.lower().endswith(suffix):
             continue
 
         csv_path = os.path.join(processed_dir, filename)
@@ -64,7 +120,8 @@ def _build_side_features(processed_dir):
         if df.empty:
             continue
 
-        lift_id = filename[:-9].strip()  # remove "_side.csv"
+        raw_stem = filename[: -len(suffix)]
+        lift_id, _ = _parse_lift_id_and_label(raw_stem)
         windows = _phase_windows(df)
 
         feats = {"lift_id": lift_id}
@@ -80,28 +137,28 @@ def _build_side_features(processed_dir):
                     avg = w[col].mean()
                     mx = w[col].max()
                     mn = w[col].min()
-                feats[f"{phase}_avg_{side}_elbow"] = avg
-                feats[f"{phase}_max_{side}_elbow"] = mx
-                feats[f"{phase}_min_{side}_elbow"] = mn
+                feats[f"{prefix}{phase}_avg_{side}_elbow"] = avg
+                feats[f"{prefix}{phase}_max_{side}_elbow"] = mx
+                feats[f"{prefix}{phase}_min_{side}_elbow"] = mn
 
         # ── Whole-lift stability features ─────────────────────────────────────
         for side in ("left", "right"):
             col = f"{side}_elbow_angle"
-            feats[f"std_{side}_elbow"] = df[col].std()
-            feats[f"elbow_range_{side}"] = df[col].max() - df[col].min()
+            feats[f"{prefix}std_{side}_elbow"] = df[col].std()
+            feats[f"{prefix}elbow_range_{side}"] = df[col].max() - df[col].min()
 
-        feats["lockout_ratio"] = df["lockout_flag"].mean()
+        feats[f"{prefix}lockout_ratio"] = df["lockout_flag"].mean()
 
         # ── Jerk-moment (lockout) snapshot ────────────────────────────────────
         lockout_idx = _lockout_index(df)
         if lockout_idx is None:
-            feats["lockout_frame_ratio"] = float("nan")
-            feats["lockout_left_elbow"] = float("nan")
-            feats["lockout_right_elbow"] = float("nan")
+            feats[f"{prefix}lockout_frame_ratio"] = float("nan")
+            feats[f"{prefix}lockout_left_elbow"] = float("nan")
+            feats[f"{prefix}lockout_right_elbow"] = float("nan")
         else:
-            feats["lockout_frame_ratio"] = lockout_idx / len(df)
-            feats["lockout_left_elbow"] = df["left_elbow_angle"].iloc[lockout_idx]
-            feats["lockout_right_elbow"] = df["right_elbow_angle"].iloc[lockout_idx]
+            feats[f"{prefix}lockout_frame_ratio"] = lockout_idx / len(df)
+            feats[f"{prefix}lockout_left_elbow"] = df["left_elbow_angle"].iloc[lockout_idx]
+            feats[f"{prefix}lockout_right_elbow"] = df["right_elbow_angle"].iloc[lockout_idx]
 
         rows.append(feats)
 
@@ -110,6 +167,7 @@ def _build_side_features(processed_dir):
 
 def _build_front_features(processed_dir):
     """Build per-lift front-view features (symmetry phase windows + lockout snapshot)."""
+    prefix = "front_"
     rows = []
     for filename in sorted(os.listdir(processed_dir)):
         if not filename.lower().endswith("_front.csv"):
@@ -120,7 +178,8 @@ def _build_front_features(processed_dir):
         if df.empty:
             continue
 
-        lift_id = filename[:-10].strip()  # remove "_front.csv"
+        raw_stem = filename[:-len("_front.csv")]
+        lift_id, _ = _parse_lift_id_and_label(raw_stem)
 
         # Filter out low-visibility frames when measuring symmetry.
         if "low_visibility_flag" in df.columns:
@@ -136,27 +195,27 @@ def _build_front_features(processed_dir):
         for phase in PHASES:
             w = windows[phase]
             w_valid = w[valid_mask.loc[w.index]]
-            feats[f"{phase}_avg_symmetry_diff"] = (
+            feats[f"{prefix}{phase}_avg_symmetry_diff"] = (
                 w_valid["symmetry_diff"].mean() if not w_valid.empty else float("nan")
             )
 
         # ── Whole-lift symmetry features ──────────────────────────────────────
         df_valid = df[valid_mask]
         if df_valid.empty:
-            feats["overall_avg_symmetry"] = float("nan")
-            feats["overall_max_symmetry"] = float("nan")
-            feats["asymmetry_ratio"] = float("nan")
+            feats[f"{prefix}overall_avg_symmetry"] = float("nan")
+            feats[f"{prefix}overall_max_symmetry"] = float("nan")
+            feats[f"{prefix}asymmetry_ratio"] = float("nan")
         else:
-            feats["overall_avg_symmetry"] = df_valid["symmetry_diff"].mean()
-            feats["overall_max_symmetry"] = df_valid["symmetry_diff"].max()
-            feats["asymmetry_ratio"] = df_valid["asymmetry_flag"].mean()
+            feats[f"{prefix}overall_avg_symmetry"] = df_valid["symmetry_diff"].mean()
+            feats[f"{prefix}overall_max_symmetry"] = df_valid["symmetry_diff"].max()
+            feats[f"{prefix}asymmetry_ratio"] = df_valid["asymmetry_flag"].mean()
 
         # ── Symmetry at the jerk-moment (lockout) frame ───────────────────────
         lockout_idx = _lockout_index(df)
         if lockout_idx is None:
-            feats["lockout_symmetry"] = float("nan")
+            feats[f"{prefix}lockout_symmetry"] = float("nan")
         else:
-            feats["lockout_symmetry"] = df["symmetry_diff"].iloc[lockout_idx]
+            feats[f"{prefix}lockout_symmetry"] = df["symmetry_diff"].iloc[lockout_idx]
 
         rows.append(feats)
 
@@ -165,7 +224,9 @@ def _build_front_features(processed_dir):
 
 def build_master_dataset(output_csv_path=None):
     """
-    Build and save merged Module 3 dataset from side + front processed CSVs.
+    Build and save merged Module 3 dataset from side + front + angle
+    processed CSVs. Lifts are joined by their leading lift number, so
+    all camera views of the same lift end up on one row.
 
     Returns:
         pandas.DataFrame: One row per lift.
@@ -174,23 +235,24 @@ def build_master_dataset(output_csv_path=None):
     if output_csv_path is None:
         output_csv_path = os.path.join(processed_dir, "module3_master_dataset.csv")
 
-    side_df = _build_side_features(processed_dir)
-    front_df = _build_front_features(processed_dir)
+    view_dfs = [_build_elbow_features(processed_dir, view) for view in ELBOW_VIEWS]
+    view_dfs.append(_build_front_features(processed_dir))
+    view_dfs = [df for df in view_dfs if not df.empty]
 
-    if side_df.empty and front_df.empty:
+    if not view_dfs:
         raise FileNotFoundError(
-            f"No side/front processed CSV files found in {processed_dir}"
+            f"No side/front/angle processed CSV files found in {processed_dir}"
         )
 
-    if side_df.empty:
-        master_df = front_df
-    elif front_df.empty:
-        master_df = side_df
-    else:
-        master_df = pd.merge(side_df, front_df, on="lift_id", how="outer")
+    master_df = view_dfs[0]
+    for df in view_dfs[1:]:
+        master_df = pd.merge(master_df, df, on="lift_id", how="outer")
 
-    master_df["label"] = master_df["lift_id"].apply(_extract_label_from_lift_id)
-    master_df = master_df.sort_values("lift_id").reset_index(drop=True)
+    labels = _collect_labels(processed_dir)
+    master_df["label"] = master_df["lift_id"].map(labels)
+
+    sort_key = master_df["lift_id"].str.extract(r"^(\d+)")[0].astype(int)
+    master_df = master_df.loc[sort_key.sort_values().index].reset_index(drop=True)
 
     os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
     master_df.to_csv(output_csv_path, index=False)
@@ -201,6 +263,9 @@ def build_master_dataset(output_csv_path=None):
     print(f"Output saved          : {output_csv_path}")
     print(f"Good labels (0)       : {(master_df['label'] == 0).sum()}")
     print(f"Bad labels (1)        : {(master_df['label'] == 1).sum()}")
+    unlabeled = master_df["label"].isna().sum()
+    if unlabeled:
+        print(f"WARNING: {unlabeled} lift(s) have no 'good'/'bad' in their filename -- unlabeled")
 
     return master_df
 

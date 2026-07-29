@@ -13,7 +13,10 @@ import pandas as pd
 import streamlit as st
 
 from src.module3_arm_analysis.config import BASE_DIR, DATA_DIR
+from src.module3_arm_analysis.injury_risk import assess_injury_risk, friendly_feature_name
 from src.module3_arm_analysis.predict import load_model, predict_from_features, predict_lift
+
+RISK_COLOR = {"Low": "green", "Moderate": "orange", "High": "red", "Unknown": "gray"}
 
 st.set_page_config(page_title="Module 3 — Arm/Shoulder/Elbow Analysis", page_icon="🏋️", layout="wide")
 
@@ -57,6 +60,47 @@ def render_result(prediction, features_row, frame_dfs=None):
     else:
         st.success(f"✅  Predicted: **GOOD** technique — confidence {(1 - proba_bad) * 100:.0f}%")
 
+    # ── Injury risk ──────────────────────────────────────────────────────────
+    risk = assess_injury_risk(features_row)
+    st.subheader("Injury risk screening")
+    st.caption(
+        "Rule-based check of documented weightlifting technique risk factors — "
+        "**not a medical diagnosis**. See the About tab for how this is calculated."
+    )
+    color = RISK_COLOR.get(risk["risk_level"], "gray")
+    st.markdown(f"**Overall risk level:** :{color}[{risk['risk_level']}]")
+
+    if risk["factors"]:
+        for factor in risk["factors"]:
+            st.warning(f"**{factor['title']}** — {factor['detail']}\n\n{factor['injury_note']}")
+    elif risk["checks"]:
+        st.info("No risk factors triggered — all checks passed.")
+    else:
+        st.info("Not enough camera views were provided to run the injury-risk checks.")
+
+    with st.expander("Show every check (including the ones that passed)"):
+        for check in risk["checks"]:
+            icon = "❌" if check["status"] == "fail" else "✅"
+            st.write(f"{icon} **{check['title']}** — {check['detail']}")
+
+    # ── Arms parallel (explicit, since it's the most commonly asked question) ─
+    left, right = features_row.get("side_lockout_left_elbow"), features_row.get("side_lockout_right_elbow")
+    if left is None or pd.isna(left):
+        left, right = features_row.get("angle_lockout_left_elbow"), features_row.get("angle_lockout_right_elbow")
+    st.subheader("Are the arms parallel overhead?")
+    if left is not None and right is not None and pd.notna(left) and pd.notna(right):
+        diff = abs(left - right)
+        parallel = diff <= 15.0
+        st.metric(
+            "Arms parallel at lockout",
+            "Yes ✅" if parallel else "No ❌",
+            delta=f"{diff:.0f}° difference",
+            delta_color="off",
+        )
+    else:
+        st.write("N/A — need side or angle view to check this.")
+
+    # ── Key measurements ─────────────────────────────────────────────────────
     st.subheader("Key measurements at jerk lockout")
     st.caption(
         "Lockout = the frame where the wrist is highest overhead "
@@ -78,6 +122,23 @@ def render_result(prediction, features_row, frame_dfs=None):
             f"training average because that camera view wasn't provided: "
             f"{', '.join(prediction['imputed_features'])}"
         )
+
+    # ── Why this prediction ──────────────────────────────────────────────────
+    with st.expander("Why this prediction? (model's actual input values)"):
+        for name, value in prediction["model_inputs"].items():
+            was_imputed = name in prediction.get("imputed_features", [])
+            note = " *(estimated — view not provided)*" if was_imputed else ""
+            st.write(f"- {friendly_feature_name(name)}: **{value:.1f}**{note}")
+
+    # ── Symmetry over time (front view) ─────────────────────────────────────
+    front_df = (frame_dfs or {}).get("front")
+    if front_df is not None and "symmetry_diff" in front_df.columns:
+        st.subheader("Left/right symmetry across the lift (front camera)")
+        st.caption(
+            "Difference between left and right elbow angle, frame by frame. "
+            "Spikes indicate moments the arms moved asymmetrically."
+        )
+        st.line_chart(front_df[["frame", "symmetry_diff"]].set_index("frame"))
 
     if frame_dfs:
         available = {v: df for v, df in frame_dfs.items() if df is not None and "left_elbow_angle" in df.columns}
@@ -158,8 +219,14 @@ with tab_about:
     st.write(f"**Model:** {type(bundle['model']).__name__}, trained on 68 labeled lifts (43 good / 25 bad).")
     st.write("**Cross-validated accuracy:** ~90% (5-fold stratified).")
     st.write(f"**Features the model uses:** {len(bundle['features'])} (selected from 59 engineered features)")
-    with st.expander("Show selected feature names"):
-        st.write(bundle["features"])
+
+    st.subheader("What the model actually looks at")
+    st.write(
+        "Of everything measured, these are the specific numbers the trained model "
+        "found most useful for telling good and bad lifts apart:"
+    )
+    for name in bundle["features"]:
+        st.write(f"- **{friendly_feature_name(name)}**")
 
     fi_path = os.path.join(BASE_DIR, "reports", "figures", "module3", "feature_importance.png")
     if os.path.exists(fi_path):
@@ -171,4 +238,28 @@ with tab_about:
         "views (side, front, oblique 3/4 'angle' view), split into early/middle/final "
         "phases of the lift, plus the exact jerk-lockout moment (the frame where the "
         "wrist is highest overhead)."
+    )
+
+    st.subheader("How the injury risk screening works")
+    st.write(
+        "This project has no injury-outcome data — only good/bad *technique* labels — "
+        "so the injury risk shown alongside each prediction is **not a second trained "
+        "model**. It's a transparent, rule-based check for three specific technique "
+        "faults that weightlifting coaching literature associates with injury risk:"
+    )
+    st.markdown(
+        "1. **Full elbow lockout** — did both arms reach ≥160° overhead? "
+        "(incomplete lockout under load is linked to shoulder impingement)\n"
+        "2. **Arms parallel at lockout** — did left and right elbow angle match "
+        "within 15° at that moment? (uneven extension means one arm carries more load)\n"
+        "3. **Front-camera symmetry at lockout** — an independent cross-check of #2 "
+        "from a second camera angle"
+    )
+    st.write(
+        "Each triggered check comes with a plain-language note on the type of injury "
+        "risk it's associated with. The risk level (Low/Moderate/High) is simply how "
+        "many of these three checks failed. On this project's own 68 lifts, this "
+        "scoring never rated an actual *bad* lift as \"Low\" risk, which is why it's "
+        "presented as a reasonable screening heuristic — but it is **not a medical "
+        "diagnosis**, and a real injury assessment needs a qualified professional."
     )

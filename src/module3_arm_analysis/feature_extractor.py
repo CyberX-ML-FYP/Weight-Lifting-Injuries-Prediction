@@ -102,6 +102,105 @@ def _lockout_index(df):
     return int(np.argmin(df["avg_wrist_y"].to_numpy()))
 
 
+def elbow_features_from_df(df, prefix):
+    """
+    Compute elbow/lockout features from one per-frame dataframe (side or
+    angle view). Shared by the batch dataset builder and by predict.py's
+    single-lift inference, so both stay consistent with each other.
+    """
+    df = df.reset_index(drop=True)
+    if df.empty:
+        return {}
+
+    windows = _phase_windows(df)
+    feats = {}
+
+    # ── Per-phase elbow features ────────────────────────────────────────────
+    for phase in PHASES:
+        w = windows[phase]
+        for side in ("left", "right"):
+            col = f"{side}_elbow_angle"
+            if w.empty:
+                avg = mx = mn = float("nan")
+            else:
+                avg = w[col].mean()
+                mx = w[col].max()
+                mn = w[col].min()
+            feats[f"{prefix}{phase}_avg_{side}_elbow"] = avg
+            feats[f"{prefix}{phase}_max_{side}_elbow"] = mx
+            feats[f"{prefix}{phase}_min_{side}_elbow"] = mn
+
+    # ── Whole-lift stability features ───────────────────────────────────────
+    for side in ("left", "right"):
+        col = f"{side}_elbow_angle"
+        feats[f"{prefix}std_{side}_elbow"] = df[col].std()
+        feats[f"{prefix}elbow_range_{side}"] = df[col].max() - df[col].min()
+
+    feats[f"{prefix}lockout_ratio"] = df["lockout_flag"].mean()
+
+    # ── Jerk-moment (lockout) snapshot ──────────────────────────────────────
+    lockout_idx = _lockout_index(df)
+    if lockout_idx is None:
+        feats[f"{prefix}lockout_frame_ratio"] = float("nan")
+        feats[f"{prefix}lockout_left_elbow"] = float("nan")
+        feats[f"{prefix}lockout_right_elbow"] = float("nan")
+    else:
+        feats[f"{prefix}lockout_frame_ratio"] = lockout_idx / len(df)
+        feats[f"{prefix}lockout_left_elbow"] = df["left_elbow_angle"].iloc[lockout_idx]
+        feats[f"{prefix}lockout_right_elbow"] = df["right_elbow_angle"].iloc[lockout_idx]
+
+    return feats
+
+
+def front_features_from_df(df):
+    """
+    Compute symmetry features from one front-view per-frame dataframe.
+    Shared by the batch dataset builder and predict.py's single-lift
+    inference.
+    """
+    prefix = "front_"
+    df = df.reset_index(drop=True)
+    if df.empty:
+        return {}
+
+    # Filter out low-visibility frames when measuring symmetry.
+    if "low_visibility_flag" in df.columns:
+        valid_mask = df["low_visibility_flag"] == 0
+    else:
+        valid_mask = pd.Series(True, index=df.index)
+
+    windows = _phase_windows(df)
+    feats = {}
+
+    # ── Per-phase symmetry (front view only) ────────────────────────────────
+    for phase in PHASES:
+        w = windows[phase]
+        w_valid = w[valid_mask.loc[w.index]]
+        feats[f"{prefix}{phase}_avg_symmetry_diff"] = (
+            w_valid["symmetry_diff"].mean() if not w_valid.empty else float("nan")
+        )
+
+    # ── Whole-lift symmetry features ────────────────────────────────────────
+    df_valid = df[valid_mask]
+    if df_valid.empty:
+        feats[f"{prefix}overall_avg_symmetry"] = float("nan")
+        feats[f"{prefix}overall_max_symmetry"] = float("nan")
+        feats[f"{prefix}asymmetry_ratio"] = float("nan")
+    else:
+        feats[f"{prefix}overall_avg_symmetry"] = df_valid["symmetry_diff"].mean()
+        feats[f"{prefix}overall_max_symmetry"] = df_valid["symmetry_diff"].max()
+        feats[f"{prefix}asymmetry_ratio"] = df_valid["asymmetry_flag"].mean()
+
+    # ── Symmetry at the jerk-moment (lockout) frame ─────────────────────────
+    lockout_idx = _lockout_index(df)
+    if lockout_idx is None:
+        feats[f"{prefix}lockout_symmetry"] = float("nan")
+    else:
+        feats[f"{prefix}lockout_symmetry"] = df["symmetry_diff"].iloc[lockout_idx]
+
+    return feats
+
+
 def _build_elbow_features(processed_dir, view):
     """
     Build per-lift elbow/lockout features from *_<view>.csv files
@@ -116,50 +215,15 @@ def _build_elbow_features(processed_dir, view):
             continue
 
         csv_path = os.path.join(processed_dir, filename)
-        df = pd.read_csv(csv_path).reset_index(drop=True)
+        df = pd.read_csv(csv_path)
         if df.empty:
             continue
 
         raw_stem = filename[: -len(suffix)]
         lift_id, _ = _parse_lift_id_and_label(raw_stem)
-        windows = _phase_windows(df)
 
         feats = {"lift_id": lift_id}
-
-        # ── Per-phase elbow features ──────────────────────────────────────────
-        for phase in PHASES:
-            w = windows[phase]
-            for side in ("left", "right"):
-                col = f"{side}_elbow_angle"
-                if w.empty:
-                    avg = mx = mn = float("nan")
-                else:
-                    avg = w[col].mean()
-                    mx = w[col].max()
-                    mn = w[col].min()
-                feats[f"{prefix}{phase}_avg_{side}_elbow"] = avg
-                feats[f"{prefix}{phase}_max_{side}_elbow"] = mx
-                feats[f"{prefix}{phase}_min_{side}_elbow"] = mn
-
-        # ── Whole-lift stability features ─────────────────────────────────────
-        for side in ("left", "right"):
-            col = f"{side}_elbow_angle"
-            feats[f"{prefix}std_{side}_elbow"] = df[col].std()
-            feats[f"{prefix}elbow_range_{side}"] = df[col].max() - df[col].min()
-
-        feats[f"{prefix}lockout_ratio"] = df["lockout_flag"].mean()
-
-        # ── Jerk-moment (lockout) snapshot ────────────────────────────────────
-        lockout_idx = _lockout_index(df)
-        if lockout_idx is None:
-            feats[f"{prefix}lockout_frame_ratio"] = float("nan")
-            feats[f"{prefix}lockout_left_elbow"] = float("nan")
-            feats[f"{prefix}lockout_right_elbow"] = float("nan")
-        else:
-            feats[f"{prefix}lockout_frame_ratio"] = lockout_idx / len(df)
-            feats[f"{prefix}lockout_left_elbow"] = df["left_elbow_angle"].iloc[lockout_idx]
-            feats[f"{prefix}lockout_right_elbow"] = df["right_elbow_angle"].iloc[lockout_idx]
-
+        feats.update(elbow_features_from_df(df, prefix))
         rows.append(feats)
 
     return pd.DataFrame(rows)
@@ -167,56 +231,21 @@ def _build_elbow_features(processed_dir, view):
 
 def _build_front_features(processed_dir):
     """Build per-lift front-view features (symmetry phase windows + lockout snapshot)."""
-    prefix = "front_"
     rows = []
     for filename in sorted(os.listdir(processed_dir)):
         if not filename.lower().endswith("_front.csv"):
             continue
 
         csv_path = os.path.join(processed_dir, filename)
-        df = pd.read_csv(csv_path).reset_index(drop=True)
+        df = pd.read_csv(csv_path)
         if df.empty:
             continue
 
         raw_stem = filename[:-len("_front.csv")]
         lift_id, _ = _parse_lift_id_and_label(raw_stem)
 
-        # Filter out low-visibility frames when measuring symmetry.
-        if "low_visibility_flag" in df.columns:
-            valid_mask = df["low_visibility_flag"] == 0
-        else:
-            valid_mask = pd.Series(True, index=df.index)
-
-        windows = _phase_windows(df)
-
         feats = {"lift_id": lift_id}
-
-        # ── Per-phase symmetry (front view only) ──────────────────────────────
-        for phase in PHASES:
-            w = windows[phase]
-            w_valid = w[valid_mask.loc[w.index]]
-            feats[f"{prefix}{phase}_avg_symmetry_diff"] = (
-                w_valid["symmetry_diff"].mean() if not w_valid.empty else float("nan")
-            )
-
-        # ── Whole-lift symmetry features ──────────────────────────────────────
-        df_valid = df[valid_mask]
-        if df_valid.empty:
-            feats[f"{prefix}overall_avg_symmetry"] = float("nan")
-            feats[f"{prefix}overall_max_symmetry"] = float("nan")
-            feats[f"{prefix}asymmetry_ratio"] = float("nan")
-        else:
-            feats[f"{prefix}overall_avg_symmetry"] = df_valid["symmetry_diff"].mean()
-            feats[f"{prefix}overall_max_symmetry"] = df_valid["symmetry_diff"].max()
-            feats[f"{prefix}asymmetry_ratio"] = df_valid["asymmetry_flag"].mean()
-
-        # ── Symmetry at the jerk-moment (lockout) frame ───────────────────────
-        lockout_idx = _lockout_index(df)
-        if lockout_idx is None:
-            feats[f"{prefix}lockout_symmetry"] = float("nan")
-        else:
-            feats[f"{prefix}lockout_symmetry"] = df["symmetry_diff"].iloc[lockout_idx]
-
+        feats.update(front_features_from_df(df))
         rows.append(feats)
 
     return pd.DataFrame(rows)

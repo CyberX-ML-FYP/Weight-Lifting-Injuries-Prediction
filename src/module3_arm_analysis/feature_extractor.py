@@ -13,6 +13,7 @@ bilateral symmetry, since both arms are visible.
 
 Author: Pasindu (214027H)
 """
+
 import os
 import re
 import numpy as np
@@ -301,21 +302,19 @@ def build_master_dataset(output_csv_path=None):
 
 def _print_good_vs_bad(dataset):
     """Print average of each feature for good vs bad lifts."""
-    feature_cols = [
-        c for c in dataset.columns
-        if c not in ("lift_id", "label")
-    ]
+    feature_cols = [c for c in dataset.columns if c not in ("lift_id", "label")]
     means = dataset.groupby("label")[feature_cols].mean().T
-    means.columns = [
-        {0: "good(0)", 1: "bad(1)"}.get(c, str(c)) for c in means.columns
-    ]
+    means.columns = [{0: "good(0)", 1: "bad(1)"}.get(c, str(c)) for c in means.columns]
     if "good(0)" in means.columns and "bad(1)" in means.columns:
         means["diff(good-bad)"] = means["good(0)"] - means["bad(1)"]
 
     with pd.option_context(
-        "display.max_rows", None,
-        "display.width", 120,
-        "display.float_format", lambda v: f"{v:8.2f}",
+        "display.max_rows",
+        None,
+        "display.width",
+        120,
+        "display.float_format",
+        lambda v: f"{v:8.2f}",
     ):
         print("\n===== FEATURE COMPARISON: GOOD vs BAD (averages) =====")
         print(means)

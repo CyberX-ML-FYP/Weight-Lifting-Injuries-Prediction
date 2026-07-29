@@ -101,3 +101,16 @@ target/
 
 # MediaPipe pose model (auto-downloaded by analyzer.py on first run)
 src/module3_arm_analysis/pose_landmarker_full.task
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+*.venv
+
+# Generated pipeline outputs (bar path + module 3)
+/data/interim/
+/data/processed/
+/data/features/
+/data/external/

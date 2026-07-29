@@ -1,42 +1,58 @@
+import pandas as pd
 import pytest
 
-from src.features.module1_trunk import (
+from src.data.module1_trunk.config import TrunkConfig
+from src.data.module1_trunk.feature_extractor import (
     calculate_angle,
     classify_lift_phase,
-    compute_trunk_features_from_landmarks,
+    extract_trunk_features,
 )
 
 
-def test_compute_trunk_features_from_landmarks():
-    landmarks = {
-        11: {"x": 0.40, "y": 0.20},
-        12: {"x": 0.60, "y": 0.20},
-        23: {"x": 0.45, "y": 0.70},
-        24: {"x": 0.55, "y": 0.70},
+def _landmark_row(frame_id, left_shoulder, right_shoulder, left_hip, right_hip, fps=30.0):
+    return {
+        "frame_id": frame_id,
+        "left_shoulder_x": left_shoulder[0],
+        "left_shoulder_y": left_shoulder[1],
+        "right_shoulder_x": right_shoulder[0],
+        "right_shoulder_y": right_shoulder[1],
+        "left_hip_x": left_hip[0],
+        "left_hip_y": left_hip[1],
+        "right_hip_x": right_hip[0],
+        "right_hip_y": right_hip[1],
+        "fps": fps,
     }
 
-    features = compute_trunk_features_from_landmarks(landmarks)
 
-    assert features["shoulder_mid_x"] == pytest.approx(0.5)
-    assert features["shoulder_mid_y"] == pytest.approx(0.2)
-    assert features["hip_mid_x"] == pytest.approx(0.5)
-    assert features["hip_mid_y"] == pytest.approx(0.7)
-    assert features["spine_angle"] > 0
-    assert features["shoulder_asymmetry_flag"] == 0
+def test_extract_trunk_features_from_landmarks():
+    config = TrunkConfig()
+    raw_df = pd.DataFrame(
+        [_landmark_row(0, (0.40, 0.20), (0.60, 0.20), (0.45, 0.70), (0.55, 0.70))]
+    )
+
+    features = extract_trunk_features(raw_df, "1good", config)
+
+    row = features.iloc[0]
+    assert row["shoulder_mid_x"] == pytest.approx(0.5)
+    assert row["shoulder_mid_y"] == pytest.approx(0.2)
+    assert row["hip_mid_x"] == pytest.approx(0.5)
+    assert row["hip_mid_y"] == pytest.approx(0.7)
+    assert row["spine_angle"] > 0
+    assert row["shoulder_asymmetry_flag"] == 0
+    assert row["low_visibility"] == 0
 
 
 def test_asymmetry_and_phase_classification():
-    landmarks = {
-        11: {"x": 0.60, "y": 0.10},
-        12: {"x": 0.80, "y": 0.18},
-        23: {"x": 0.12, "y": 0.70},
-        24: {"x": 0.28, "y": 0.70},
-    }
+    config = TrunkConfig()
+    raw_df = pd.DataFrame(
+        [_landmark_row(0, (0.60, 0.10), (0.80, 0.18), (0.12, 0.70), (0.28, 0.70))]
+    )
 
-    features = compute_trunk_features_from_landmarks(landmarks)
+    features = extract_trunk_features(raw_df, "2bad", config)
 
-    assert features["shoulder_asymmetry_flag"] == 1
-    assert classify_lift_phase(features["spine_angle"]) == "first_pull"
+    row = features.iloc[0]
+    assert row["shoulder_asymmetry_flag"] == 1
+    assert classify_lift_phase(row["spine_angle"]) == "first_pull"
 
 
 def test_calculate_angle_uses_triangle_geometry():

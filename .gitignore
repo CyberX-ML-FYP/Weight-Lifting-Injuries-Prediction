@@ -105,6 +105,7 @@ ENV/
 *.venv
 
 # Generated pipeline outputs (bar path + module 3)
-/data/interim/bar_path/
-/data/processed/bar_path/
-/data/processed/front_view_combined_dataset.csv
+/data/interim/
+/data/processed/
+/data/features/
+/data/external/

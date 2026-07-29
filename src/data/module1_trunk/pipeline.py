@@ -5,6 +5,7 @@ from typing import List
 
 import pandas as pd
 
+from .cleaner import clean_coordinates, save_cleaned_coordinates
 from .config import TrunkConfig
 from .feature_extractor import extract_trunk_features, summarize_trunk_features
 from .landmark_extractor import build_pose_detector, extract_landmarks
@@ -40,7 +41,16 @@ def process_video(video_path: Path, config: TrunkConfig) -> None:
         return
 
     raw_df = pd.DataFrame(raw_records)
-    feature_df = extract_trunk_features(raw_df, video_id, config)
+    cleaned_df = clean_coordinates(raw_df, config, video_id)
+
+    if cleaned_df.empty:
+        logger.warning("Cleaned coordinates are empty for %s", video_id)
+        return
+
+    save_cleaned_coordinates(cleaned_df, video_id, config.processed_output_dir)
+    logger.info("Cleaned coordinates saved for %s", video_id)
+
+    feature_df = extract_trunk_features(cleaned_df, video_id, config)
 
     if feature_df.empty:
         logger.warning("No trunk features produced for %s", video_id)

@@ -6,8 +6,8 @@ Author: Pasindu (214027H)
 """
 import os
 
-from src.module3_arm_analysis.analyzer import analyze_video
-from src.module3_arm_analysis.config import DATA_DIR
+from src.data.module3_arm_analysis.analyzer import analyze_video
+from src.data.module3_arm_analysis.config import DATA_DIR
 
 
 def _extract_label(filename):

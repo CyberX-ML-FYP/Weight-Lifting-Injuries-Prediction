@@ -8,7 +8,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from src.module3_arm_analysis.config import (
+from src.data.module3_arm_analysis.config import (
     SYMMETRY_THRESHOLD, LOCKOUT_THRESHOLD, OUTPUT_DIR,
 )
 

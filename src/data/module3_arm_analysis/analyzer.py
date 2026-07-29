@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import os
 
-from src.module3_arm_analysis.config import (
+from src.data.module3_arm_analysis.config import (
     MODEL_PATH, MODEL_URL,
     LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST,
     RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST,

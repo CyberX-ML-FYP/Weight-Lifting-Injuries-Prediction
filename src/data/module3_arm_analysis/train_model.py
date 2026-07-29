@@ -15,7 +15,7 @@ from sklearn.model_selection import LeaveOneOut, StratifiedKFold, cross_val_scor
 from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
-from src.module3_arm_analysis.config import BASE_DIR, DATA_DIR, OUTPUT_DIR
+from src.data.module3_arm_analysis.config import BASE_DIR, DATA_DIR, OUTPUT_DIR
 
 # Below this many lifts, 5-fold CV is too noisy to trust -- use leave-one-out
 # instead. Once the dataset grows past this, switch to stratified k-fold.

@@ -19,7 +19,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from src.module3_arm_analysis.config import DATA_DIR
+from src.data.module3_arm_analysis.config import DATA_DIR
 
 
 PHASES = ("early", "middle", "final")

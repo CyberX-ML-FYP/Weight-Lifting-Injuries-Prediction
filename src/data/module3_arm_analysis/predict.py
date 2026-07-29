@@ -11,9 +11,9 @@ import tempfile
 import joblib
 import pandas as pd
 
-from src.module3_arm_analysis.analyzer import analyze_video
-from src.module3_arm_analysis.config import BASE_DIR
-from src.module3_arm_analysis.feature_extractor import (
+from src.data.module3_arm_analysis.analyzer import analyze_video
+from src.data.module3_arm_analysis.config import BASE_DIR
+from src.data.module3_arm_analysis.feature_extractor import (
     ELBOW_VIEWS,
     elbow_features_from_df,
     front_features_from_df,

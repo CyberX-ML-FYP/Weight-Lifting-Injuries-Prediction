@@ -110,7 +110,7 @@ ENV/
 *.venv
 
 # Generated pipeline outputs (bar path + module 3)
-/data/interim/
-/data/processed/
-/data/features/
-/data/external/
+# /data/interim/
+# /data/processed/
+# /data/features/
+# /data/external/

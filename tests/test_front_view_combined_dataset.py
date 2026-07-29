@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.module3_arm_analysis.feature_extractor import build_front_view_combined_dataset
+from src.data.module3_arm_analysis.feature_extractor import build_front_view_combined_dataset
 
 
 def test_build_front_view_combined_dataset(tmp_path):

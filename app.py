@@ -12,8 +12,8 @@ import tempfile
 import pandas as pd
 import streamlit as st
 
-from src.module3_arm_analysis.config import BASE_DIR, DATA_DIR
-from src.module3_arm_analysis.predict import load_model, predict_from_features, predict_lift
+from src.data.module3_arm_analysis.config import BASE_DIR, DATA_DIR
+from src.data.module3_arm_analysis.predict import load_model, predict_from_features, predict_lift
 
 st.set_page_config(page_title="Module 3 — Arm/Shoulder/Elbow Analysis", page_icon="🏋️", layout="wide")
 

@@ -48,6 +48,7 @@ def _row_features(row: pd.Series, config: TrunkConfig) -> dict:
         "left_hip_x", "left_hip_y",
         "right_hip_x", "right_hip_y",
     )
+    low_visibility = int(row.get("low_visibility", 0))
     if row[list(required)].isna().any():
         return {
             "shoulder_mid_x": np.nan,
@@ -101,7 +102,7 @@ def _row_features(row: pd.Series, config: TrunkConfig) -> dict:
         "postural_deviation": postural_deviation,
         "shoulder_asymmetry_flag": asymmetry_flag,
         "lift_phase": classify_lift_phase(spine_angle),
-        "low_visibility": 0,
+        "low_visibility": low_visibility,
     }
 
 
@@ -131,6 +132,10 @@ def extract_trunk_features(raw_df: pd.DataFrame, video_id: str, config: TrunkCon
     df = raw_df.sort_values("frame_id").reset_index(drop=True).copy()
     feature_rows = df.apply(lambda row: _row_features(row, config), axis=1, result_type="expand")
 
+    # feature_rows is authoritative for low_visibility (it reflects the
+    # cleaner's interpolation flag, if present); drop the incoming copy to
+    # avoid a duplicate column on concat.
+    df = df.drop(columns=["low_visibility"], errors="ignore")
     df = pd.concat([df, feature_rows], axis=1)
     df["video_id"] = video_id
     df["frame_index"] = df["frame_id"].astype(int)

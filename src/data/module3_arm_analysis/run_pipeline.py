@@ -3,17 +3,17 @@ Module 3 — Pipeline Runner
 Runs batch processing, feature extraction, and model training in sequence.
 
 Usage:
-    python -m src.module3_arm_analysis.run_pipeline
-    python -m src.module3_arm_analysis.run_pipeline --clean
-    python -m src.module3_arm_analysis.run_pipeline --skip-videos
+    python -m src.data.module3_arm_analysis.run_pipeline
+    python -m src.data.module3_arm_analysis.run_pipeline --clean
+    python -m src.data.module3_arm_analysis.run_pipeline --skip-videos
 """
 import argparse
 import os
 
-from src.module3_arm_analysis.batch_processor import run_batch
-from src.module3_arm_analysis.feature_extractor import build_master_dataset
-from src.module3_arm_analysis.train_model import train_module3_model
-from src.module3_arm_analysis.config import DATA_DIR
+from src.data.module3_arm_analysis.batch_processor import run_batch
+from src.data.module3_arm_analysis.feature_extractor import build_master_dataset
+from src.data.module3_arm_analysis.train_model import train_module3_model
+from src.data.module3_arm_analysis.config import DATA_DIR
 
 
 def _print_step_banner(step_no, total_steps, title):

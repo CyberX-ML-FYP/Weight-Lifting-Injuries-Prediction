@@ -96,3 +96,14 @@ target/
 
 # MediaPipe pose model (auto-downloaded by analyzer.py on first run)
 src/module3_arm_analysis/pose_landmarker_full.task
+
+# Node / frontend build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+
+# Large generated data (extracted video frames, raw/robustness test videos)
+/data/interim/hip_knee/
+/data/raw/hip_knee/
+/data/_robustness_tests/

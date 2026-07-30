@@ -102,6 +102,12 @@ target/
 # MediaPipe pose model (auto-downloaded by analyzer.py on first run)
 src/module3_arm_analysis/pose_landmarker_full.task
 
+# Node / frontend build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+
 # Python virtual environments
 .venv/
 venv/
@@ -114,3 +120,7 @@ ENV/
 /data/processed/
 /data/features/
 /data/external/
+
+# Large generated data (raw/robustness test videos)
+/data/raw/hip_knee/
+/data/_robustness_tests/

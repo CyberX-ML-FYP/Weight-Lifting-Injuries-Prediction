@@ -15,4 +15,19 @@ pyarrow
 scikit-learn
 xgboost
 joblib
+
+# Hip & Knee Analysis module (lower-body lift-quality pipeline)
+torch
+ultralytics
+google-generativeai
+imageio-ffmpeg  # bundled static ffmpeg binary, used as a fallback when ffmpeg is not on PATH
+
+# Hip & Knee REST API (src/api/hip_knee_api.py)
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Hip & Knee Explainable AI (src/explainability/explain_prediction.py)
+captum
+
 streamlit

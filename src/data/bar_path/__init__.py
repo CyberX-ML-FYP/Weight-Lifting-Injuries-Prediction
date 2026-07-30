@@ -5,7 +5,7 @@ from .video_loader import load_video
 from .landmark_extractor import extract_landmarks
 from .cleaner import clean_coordinates
 from .feature_extractor import extract_bar_path_features
-from .storage import save_cleaned_coordinates, save_features
+from .storage import save_cleaned_coordinates, save_frame_level_features
 from .pipeline import process_all_videos
 
 __all__ = [
@@ -15,6 +15,6 @@ __all__ = [
     "clean_coordinates",
     "extract_bar_path_features",
     "save_cleaned_coordinates",
-    "save_features",
+    "save_frame_level_features",
     "process_all_videos",
 ]

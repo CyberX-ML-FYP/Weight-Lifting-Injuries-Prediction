@@ -29,3 +29,5 @@ python-multipart
 
 # Hip & Knee Explainable AI (src/explainability/explain_prediction.py)
 captum
+
+streamlit

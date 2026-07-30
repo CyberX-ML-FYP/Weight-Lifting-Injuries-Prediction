@@ -79,9 +79,9 @@ def run_batch(view=None):
     Run batch processing by view.
 
     Args:
-        view: "side", "front", or None (process both).
+        view: "side", "front", "angle", or None (process all).
     """
-    valid_views = ("side", "front")
+    valid_views = ("side", "front", "angle")
     if view is None:
         views = valid_views
     else:

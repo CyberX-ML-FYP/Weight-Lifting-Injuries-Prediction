@@ -91,6 +91,11 @@ target/
 
 /data/raw/videos/
 
+# Raw lift video folders (large binary files; not meant for git history).
+# Keeps data/raw/.gitkeep tracked so the folder structure still exists,
+# but ignores everything uploaded inside it (Side view/, Front view/, etc).
+/data/raw/*/
+
 # Module 3 raw lift videos (large binary files; not meant for git history)
 /data/raw_videos/
 
@@ -103,7 +108,19 @@ frontend/node_modules/
 frontend/dist/
 dist/
 
-# Large generated data (extracted video frames, raw/robustness test videos)
-/data/interim/hip_knee/
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+*.venv
+
+# Generated pipeline outputs (bar path + module 3)
+/data/interim/
+/data/processed/
+/data/features/
+/data/external/
+
+# Large generated data (raw/robustness test videos)
 /data/raw/hip_knee/
 /data/_robustness_tests/

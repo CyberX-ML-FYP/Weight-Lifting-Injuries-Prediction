@@ -140,7 +140,18 @@ def train_module3_model():
     X_selected = X[selected_features]
     best_model.fit(X_selected, y)
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    joblib.dump({"model": best_model, "features": selected_features}, model_path)
+    joblib.dump(
+        {
+            "model": best_model,
+            "features": selected_features,
+            # Training-set means for the selected features, so predict.py
+            # can fill in a feature it can't compute (e.g. a camera view
+            # wasn't provided) the same principled way training data gaps
+            # were filled -- never from the single new lift being scored.
+            "feature_means": X_selected.mean().to_dict(),
+        },
+        model_path,
+    )
     print(f"\nBest model: {best_name}")
     print(f"Saved model to: {model_path}")
 

@@ -9,7 +9,7 @@ import pandas as pd
 from .cleaner import clean_coordinates
 from .config import BarPathConfig
 from .feature_extractor import extract_bar_path_features, summarize_bar_path_features
-from .landmark_extractor import extract_landmarks
+from .landmark_extractor import build_pose_detector, extract_landmarks
 from .storage import save_cleaned_coordinates, save_frame_level_features
 from .utils import setup_logger
 from .video_loader import load_video
@@ -17,14 +17,21 @@ from .video_loader import load_video
 logger = setup_logger(__name__)
 
 
-def _collect_landmarks(video_path: Path) -> List[dict]:
+def _collect_landmarks(video_path: Path, config: BarPathConfig) -> List[dict]:
     frames: List[dict] = []
+    pose = build_pose_detector(config)
 
-    for frame_id, frame, frame_width, frame_height, fps in load_video(video_path):
-        landmarks = extract_landmarks(frame, frame_id, frame_width, frame_height)
-        landmarks["video_id"] = video_path.stem
-        landmarks["fps"] = float(fps)
-        frames.append(landmarks)
+    try:
+        for frame_id, frame, frame_width, frame_height, fps in load_video(video_path):
+            timestamp_ms = int((frame_id / fps) * 1000) if fps else int(frame_id * 1000 / 30)
+            landmarks = extract_landmarks(
+                pose, frame, frame_id, timestamp_ms, frame_width, frame_height, config
+            )
+            landmarks["video_id"] = video_path.stem
+            landmarks["fps"] = float(fps)
+            frames.append(landmarks)
+    finally:
+        pose.close()
 
     return frames
 
@@ -38,7 +45,7 @@ def process_video(video_path: Path, config: BarPathConfig) -> None:
     video_id = video_path.stem
     logger.info("Starting processing for video %s", video_id)
 
-    raw_records = _collect_landmarks(video_path)
+    raw_records = _collect_landmarks(video_path, config)
     if not raw_records:
         logger.warning("No landmarks extracted for %s", video_id)
         return

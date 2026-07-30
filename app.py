@@ -12,7 +12,7 @@ import tempfile
 import pandas as pd
 import streamlit as st
 
-from src.data.module3_arm_analysis.config import BASE_DIR, DATA_DIR
+from src.data.module3_arm_analysis.config import BASE_DIR, INTERIM_DIR, MASTER_DATASET_PATH
 from src.data.module3_arm_analysis.predict import load_model, predict_from_features, predict_lift
 
 st.set_page_config(page_title="Module 3 — Arm/Shoulder/Elbow Analysis", page_icon="🏋️", layout="wide")
@@ -36,13 +36,12 @@ def get_model_bundle():
 
 @st.cache_data
 def load_master_dataset():
-    path = os.path.join(DATA_DIR, "processed", "module3_master_dataset.csv")
-    return pd.read_csv(path)
+    return pd.read_csv(MASTER_DATASET_PATH)
 
 
 @st.cache_data
 def load_frame_csv(lift_id, view):
-    path = os.path.join(DATA_DIR, "processed", f"{lift_id}_{view}.csv")
+    path = os.path.join(INTERIM_DIR, f"{lift_id}_{view}.csv")
     if os.path.exists(path):
         return pd.read_csv(path)
     return None
@@ -113,7 +112,7 @@ with tab_demo:
         else:
             features_row = row.iloc[0].to_dict()
             prediction = predict_from_features(features_row)
-            frame_dfs = {view: load_frame_csv(lift_id, view) for view in ("side", "front", "angle")}
+            frame_dfs = {view: load_frame_csv(lift_id, view) for view in ("side", "front", "angle45")}
             true_label = "good" if row.iloc[0]["label"] == 0 else "bad"
             st.caption(f"Ground truth label for this demo lift (from filename): **{true_label}**")
             render_result(prediction, features_row, frame_dfs)
@@ -130,7 +129,7 @@ with tab_upload:
     angle_file = st.file_uploader("Angle (3/4) view", type=["mp4", "mov", "avi", "mkv"], key="angle_up")
 
     if st.button("Run prediction", key="upload_run"):
-        uploads = {"side": side_file, "front": front_file, "angle": angle_file}
+        uploads = {"side": side_file, "front": front_file, "angle45": angle_file}
         provided = {view: file for view, file in uploads.items() if file is not None}
         if not provided:
             st.warning("Upload at least one video first.")

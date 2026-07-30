@@ -22,7 +22,8 @@ def _collect_landmarks(video_path: Path, config: TrunkConfig) -> List[dict]:
 
     try:
         for frame_id, frame, _frame_width, _frame_height, fps in load_video(video_path):
-            landmarks = extract_landmarks(pose, frame, frame_id, config)
+            timestamp_ms = int((frame_id / fps) * 1000) if fps else int(frame_id * 1000 / 30)
+            landmarks = extract_landmarks(pose, frame, frame_id, timestamp_ms, config)
             landmarks["fps"] = float(fps)
             frames.append(landmarks)
     finally:

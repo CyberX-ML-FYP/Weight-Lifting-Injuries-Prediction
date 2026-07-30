@@ -17,7 +17,29 @@ class BarPathConfig:
     smoothing_window: int = 7
     smoothing_polyorder: int = 2
 
+    num_poses: int = 5
+    min_detection_confidence: float = 0.5
+    min_tracking_confidence: float = 0.5
+
+    left_shoulder: int = 11
+    right_shoulder: int = 12
+    left_hip: int = 23
+    right_hip: int = 24
+
+    model_path: Path = field(init=False)
+    model_url: str = (
+        "https://storage.googleapis.com/mediapipe-models/"
+        "pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task"
+    )
+
     def __post_init__(self) -> None:
+        # Shared with module3_arm_analysis so the ~9MB model is only
+        # downloaded once for the whole project.
+        object.__setattr__(
+            self,
+            "model_path",
+            self.root_dir / "src" / "data" / "module3_arm_analysis" / "pose_landmarker_full.task",
+        )
         object.__setattr__(
             self,
             "raw_video_dir",

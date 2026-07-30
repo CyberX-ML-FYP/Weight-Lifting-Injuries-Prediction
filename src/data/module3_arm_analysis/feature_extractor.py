@@ -19,14 +19,14 @@ import re
 import numpy as np
 import pandas as pd
 
-from src.data.module3_arm_analysis.config import DATA_DIR
+from src.data.module3_arm_analysis.config import INTERIM_DIR, MASTER_DATASET_PATH
 
 
 PHASES = ("early", "middle", "final")
 
 # Camera views that show elbow flexion well enough to extract elbow-angle
 # features from (side = pure profile, angle = oblique 3/4 view).
-ELBOW_VIEWS = ("side", "angle")
+ELBOW_VIEWS = ("side", "angle45")
 
 _LEADING_NUMBER = re.compile(r"^(\d+)")
 
@@ -261,9 +261,9 @@ def build_master_dataset(output_csv_path=None):
     Returns:
         pandas.DataFrame: One row per lift.
     """
-    processed_dir = os.path.join(DATA_DIR, "processed")
+    processed_dir = INTERIM_DIR
     if output_csv_path is None:
-        output_csv_path = os.path.join(processed_dir, "module3_master_dataset.csv")
+        output_csv_path = MASTER_DATASET_PATH
 
     view_dfs = [_build_elbow_features(processed_dir, view) for view in ELBOW_VIEWS]
     view_dfs.append(_build_front_features(processed_dir))

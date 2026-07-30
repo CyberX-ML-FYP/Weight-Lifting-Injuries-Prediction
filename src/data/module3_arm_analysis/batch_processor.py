@@ -7,7 +7,7 @@ Author: Pasindu (214027H)
 import os
 
 from src.data.module3_arm_analysis.analyzer import analyze_video
-from src.data.module3_arm_analysis.config import DATA_DIR
+from src.data.module3_arm_analysis.config import INTERIM_DIR, RAW_VIDEO_DIR
 
 
 def _extract_label(filename):
@@ -22,8 +22,8 @@ def _extract_label(filename):
 
 def _process_view(view):
     """Process videos for one view type and print summary."""
-    input_dir = os.path.join(DATA_DIR, "raw_videos", view)
-    output_dir = os.path.join(DATA_DIR, "processed")
+    input_dir = os.path.join(RAW_VIDEO_DIR, view)
+    output_dir = INTERIM_DIR
     os.makedirs(output_dir, exist_ok=True)
 
     valid_exts = (".mp4", ".mov", ".avi", ".mkv")
@@ -79,9 +79,9 @@ def run_batch(view=None):
     Run batch processing by view.
 
     Args:
-        view: "side", "front", "angle", or None (process all).
+        view: "side", "front", "angle45", or None (process all).
     """
-    valid_views = ("side", "front", "angle")
+    valid_views = ("side", "front", "angle45")
     if view is None:
         views = valid_views
     else:

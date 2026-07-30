@@ -13,29 +13,32 @@ import os
 from src.data.module3_arm_analysis.batch_processor import run_batch
 from src.data.module3_arm_analysis.feature_extractor import build_master_dataset
 from src.data.module3_arm_analysis.train_model import train_module3_model
-from src.data.module3_arm_analysis.config import DATA_DIR
+from src.data.module3_arm_analysis.config import FEATURES_DIR, INTERIM_DIR
 
 
 def _print_step_banner(step_no, total_steps, title):
     print(f"\n========== STEP {step_no}/{total_steps}: {title} ==========")
 
 
-def _clean_processed_csvs():
-    """Delete only CSV files in data/processed (never touch raw videos)."""
-    processed_dir = os.path.join(DATA_DIR, "processed")
-    if not os.path.isdir(processed_dir):
-        print(f"No processed directory found: {processed_dir}")
-        return
+def _clean_csv_dir(csv_dir):
+    if not os.path.isdir(csv_dir):
+        print(f"No directory found: {csv_dir}")
+        return 0
 
     removed = 0
-    for filename in os.listdir(processed_dir):
+    for filename in os.listdir(csv_dir):
         if filename.lower().endswith(".csv"):
-            file_path = os.path.join(processed_dir, filename)
+            file_path = os.path.join(csv_dir, filename)
             if os.path.isfile(file_path):
                 os.remove(file_path)
                 removed += 1
+    return removed
 
-    print(f"Cleaned processed CSV files: {removed}")
+
+def _clean_processed_csvs():
+    """Delete generated CSVs in interim/features (never touch raw videos)."""
+    removed = _clean_csv_dir(INTERIM_DIR) + _clean_csv_dir(FEATURES_DIR)
+    print(f"Cleaned generated CSV files: {removed}")
 
 
 def run_pipeline(clean=False, skip_videos=False):

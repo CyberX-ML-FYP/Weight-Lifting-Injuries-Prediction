@@ -10,6 +10,23 @@ DATA_DIR    = os.path.join(BASE_DIR, "data")
 OUTPUT_DIR  = os.path.join(BASE_DIR, "reports", "figures", "module3")
 MODEL_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker_full.task")
 
+# Raw videos live under data/raw/videos/<view>/, same convention as the
+# other modules (bar_path, module1_trunk).
+RAW_VIDEO_DIR = os.path.join(DATA_DIR, "raw", "videos")
+
+# Per-video cleaned landmark coordinates (visibility-filtered, interpolated,
+# smoothed) -- computed before any angle math runs on them.
+PROCESSED_DIR = os.path.join(DATA_DIR, "processed", "module3")
+
+# Per-video per-frame feature CSVs (one row per processed frame).
+INTERIM_DIR = os.path.join(DATA_DIR, "interim", "module3")
+
+# One-row-per-lift merged dataset (module3_master_dataset.csv) and any
+# other final feature tables for this module.
+FEATURES_DIR = os.path.join(DATA_DIR, "features", "module3")
+
+MASTER_DATASET_PATH = os.path.join(FEATURES_DIR, "module3_master_dataset.csv")
+
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
     "pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task"

@@ -15,7 +15,7 @@ from sklearn.model_selection import LeaveOneOut, StratifiedKFold, cross_val_scor
 from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
-from src.data.module3_arm_analysis.config import BASE_DIR, DATA_DIR, OUTPUT_DIR
+from src.data.module3_arm_analysis.config import BASE_DIR, MASTER_DATASET_PATH, OUTPUT_DIR
 
 # Below this many lifts, 5-fold CV is too noisy to trust -- use leave-one-out
 # instead. Once the dataset grows past this, switch to stratified k-fold.
@@ -129,7 +129,7 @@ def _save_feature_importance(model, feature_names, output_path):
 
 def train_module3_model():
     """Train best model on full data and save model + feature importance."""
-    data_path = os.path.join(DATA_DIR, "processed", "module3_master_dataset.csv")
+    data_path = MASTER_DATASET_PATH
     model_path = os.path.join(BASE_DIR, "models", "module3_model.pkl")
     figure_path = os.path.join(OUTPUT_DIR, "feature_importance.png")
 

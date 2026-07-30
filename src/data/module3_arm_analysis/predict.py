@@ -37,8 +37,8 @@ def analyze_lift_videos(video_paths, show_display=False):
     compute Module 3's engineered features for it.
 
     Args:
-        video_paths: dict mapping view name ("side", "front", "angle") to
-            a video file path. At least one of "side"/"angle" is needed
+        video_paths: dict mapping view name ("side", "front", "angle45") to
+            a video file path. At least one of "side"/"angle45" is needed
             for a meaningful prediction -- the trained model's top
             features all come from those two views, not front.
         show_display: passed through to analyze_video (live overlay window).
@@ -49,11 +49,11 @@ def analyze_lift_videos(video_paths, show_display=False):
         raw per-frame dataframe (frame, elbow angles, wrist_y, ...), for
         rendering charts in a UI.
     """
-    unknown = set(video_paths) - {"side", "front", "angle"}
+    unknown = set(video_paths) - {"side", "front", "angle45"}
     if unknown:
-        raise ValueError(f"Unknown view(s): {unknown}. Expected side/front/angle.")
+        raise ValueError(f"Unknown view(s): {unknown}. Expected side/front/angle45.")
     if not video_paths:
-        raise ValueError("Provide at least one video (side and/or angle recommended).")
+        raise ValueError("Provide at least one video (side and/or angle45 recommended).")
 
     features = {}
     frame_dfs = {}
@@ -120,7 +120,7 @@ def predict_lift(video_paths, show_display=False):
     End-to-end: video file(s) for one lift -> prediction.
 
     Args:
-        video_paths: dict mapping "side"/"front"/"angle" -> video file path.
+        video_paths: dict mapping "side"/"front"/"angle45" -> video file path.
         show_display: passed through to the pose analyzer.
 
     Returns:

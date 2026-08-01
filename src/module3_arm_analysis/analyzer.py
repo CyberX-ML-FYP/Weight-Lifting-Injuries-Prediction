@@ -21,16 +21,13 @@ from src.module3_arm_analysis.config import (
     LEFT_HIP, RIGHT_HIP,
     SYMMETRY_THRESHOLD, LOCKOUT_THRESHOLD,
     FRAME_SKIP, MIN_DETECTION_CONF, MIN_TRACKING_CONF,
+    ANNOTATED_VIDEO_DIR,
 )
 
-# ── Pose skeleton drawing connections ─────────────────────────────────────────
-POSE_CONNECTIONS = [
-    (0,1),(1,2),(2,3),(3,7),(0,4),(4,5),(5,6),(6,8),
-    (9,10),(11,12),(11,13),(13,15),(15,17),(15,19),(15,21),(17,19),
-    (12,14),(14,16),(16,18),(16,20),(16,22),(18,20),
-    (11,23),(12,24),(23,24),(23,25),(25,27),(27,29),(27,31),(29,31),
-    (24,26),(26,28),(28,30),(28,32),(30,32),
-]
+# Colors are BGR (OpenCV convention).
+LEFT_COLOR  = (255, 255, 0)   # cyan
+RIGHT_COLOR = (255, 0, 255)   # magenta
+MIDLINE_COLOR = (200, 200, 200)  # light gray, for shoulder-shoulder / hip-hip context lines
 
 
 def calculate_angle(A, B, C):
@@ -54,45 +51,140 @@ def download_model_if_needed():
         print("Model downloaded.")
 
 
-def draw_landmarks(frame, landmarks):
-    """Draw the 33-point pose skeleton overlay on a frame."""
+def draw_arm_landmarks(frame, landmarks):
+    """
+    Draw only the points/segments Module 3 actually measures: shoulders,
+    elbows, wrists, hips. Left and right are color-coded separately so a
+    left/right landmark swap is visible at a glance on playback -- unlike
+    a full 33-point skeleton, this is meant for auditing tracking quality
+    on the specific joints this module's angles/symmetry depend on.
+    """
     h, w = frame.shape[:2]
-    pts = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
-    for (a, b) in POSE_CONNECTIONS:
-        if a < len(pts) and b < len(pts):
-            cv2.line(frame, pts[a], pts[b], (0, 255, 0), 2, cv2.LINE_AA)
-    for (x, y) in pts:
-        cv2.circle(frame, (x, y), 4, (0, 0, 255), -1, cv2.LINE_AA)
-        cv2.circle(frame, (x, y), 4, (255, 255, 255), 1, cv2.LINE_AA)
+
+    def pt(idx):
+        lm = landmarks[idx]
+        return (int(lm.x * w), int(lm.y * h))
+
+    left_chain  = [LEFT_HIP, LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST]
+    right_chain = [RIGHT_HIP, RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST]
+
+    for chain, color in ((left_chain, LEFT_COLOR), (right_chain, RIGHT_COLOR)):
+        pts = [pt(idx) for idx in chain]
+        for a, b in zip(pts, pts[1:]):
+            cv2.line(frame, a, b, color, 2, cv2.LINE_AA)
+        for p in pts:
+            cv2.circle(frame, p, 5, color, -1, cv2.LINE_AA)
+            cv2.circle(frame, p, 5, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Context lines: shoulder-to-shoulder and hip-to-hip, relevant to the
+    # symmetry measurement but not part of either arm's angle calculation.
+    cv2.line(frame, pt(LEFT_SHOULDER), pt(RIGHT_SHOULDER), MIDLINE_COLOR, 1, cv2.LINE_AA)
+    cv2.line(frame, pt(LEFT_HIP), pt(RIGHT_HIP), MIDLINE_COLOR, 1, cv2.LINE_AA)
 
 
-def select_center_pose(pose_landmarks_list):
-    """Select the detected pose whose torso center is closest to frame center."""
-    if not pose_landmarks_list:
-        return None
+class PersonTracker:
+    """
+    Selects which detected pose (there can be up to 5, since gym footage
+    often has coaches/other lifters/bystanders/cameramen in frame) is the
+    actual lifter.
 
-    torso_indices = [11, 12, 23, 24]
-    best_pose = None
-    best_distance = float("inf")
+    Confirmed necessary, not theoretical: on real footage (side_21bad.MOV)
+    a pure "closest to frame center" heuristic tracked a person walking
+    through the background, then the cameraman, before finally landing on
+    the actual lifter only once they stood upright and centered late in
+    the lift -- during the crouched/off-center setup and pull phase, a
+    bystander was often more centered than the lifter.
 
-    for landmarks in pose_landmarks_list:
-        if not landmarks:
-            continue
+    A first version of this class made continuity a hard lock (always
+    follow whoever's nearest to the last-tracked position, if within
+    range). Tested against the same video: it stopped the tracker
+    flickering between different wrong bystanders, but it also got
+    permanently stuck on the first wrong pick, since that bystander never
+    moved far enough away to break the lock -- worse than the original
+    heuristic, which at least self-corrected once the real lifter became
+    clearly the most centered person later in the lift.
 
-        x_values = [landmarks[idx].x for idx in torso_indices if idx < len(landmarks)]
-        if len(x_values) != len(torso_indices):
-            continue
+    This version makes continuity a soft tiebreaker instead: each frame,
+    find the single most-centered candidate as the reference point. Keep
+    following the previously-tracked person ONLY if they're still within
+    STICKINESS_MARGIN of that reference -- close enough that switching
+    would just be reacting to frame-to-frame jitter. If someone else is
+    now clearly more centered (beyond the margin), switch to them. This
+    keeps the old heuristic's ability to self-correct once the real
+    lifter is obviously more centered, while damping the minor jitter
+    that made the original version pick a *different* wrong bystander
+    from one moment to the next.
 
-        avg_x = sum(x_values) / len(x_values)
-        distance_to_center = abs(avg_x - 0.5)
-        if distance_to_center < best_distance:
-            best_distance = distance_to_center
-            best_pose = landmarks
+    Per frame:
+      1. Confidence filter: drop candidates whose mean torso-landmark
+         visibility is too low (partial detections, distant bystanders).
+      2. Find the most-centered candidate this frame (the reference).
+      3. If we're tracking someone and they're still findable nearby and
+         within STICKINESS_MARGIN of the reference's center-distance,
+         keep following them.
+      4. Otherwise, switch to the most-centered candidate.
+    """
 
-    return best_pose
+    TORSO_INDICES = (11, 12, 23, 24)  # left/right shoulder, left/right hip
+    MIN_TRACK_CONFIDENCE = 0.5
+    STICKINESS_MARGIN = 0.05    # normalized x-distance of slack before we abandon the current track
+    MAX_MATCH_DISTANCE = 0.3    # normalized 2D distance beyond which we can't find the tracked person this frame
+
+    def __init__(self):
+        self.last_position = None  # (x, y) normalized torso center of the last-selected person
+
+    def _torso_center_and_confidence(self, landmarks):
+        points = [landmarks[idx] for idx in self.TORSO_INDICES if idx < len(landmarks)]
+        if len(points) != len(self.TORSO_INDICES):
+            return None
+        x = sum(p.x for p in points) / len(points)
+        y = sum(p.y for p in points) / len(points)
+        confidence = sum(float(getattr(p, "visibility", 1.0)) for p in points) / len(points)
+        return (x, y), confidence
+
+    @staticmethod
+    def _distance(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+    def select(self, pose_landmarks_list):
+        if not pose_landmarks_list:
+            return None
+
+        candidates = []
+        for landmarks in pose_landmarks_list:
+            if not landmarks:
+                continue
+            info = self._torso_center_and_confidence(landmarks)
+            if info is None:
+                continue
+            position, confidence = info
+            if confidence < self.MIN_TRACK_CONFIDENCE:
+                continue
+            candidates.append((landmarks, position))
+
+        if not candidates:
+            # Nobody passed the confidence filter this frame -- leave
+            # last_position as-is rather than losing the track on one bad frame.
+            return None
+
+        best_center = min(candidates, key=lambda c: abs(c[1][0] - 0.5))
+        best_center_distance = abs(best_center[1][0] - 0.5)
+
+        if self.last_position is not None:
+            nearest = min(candidates, key=lambda c: self._distance(c[1], self.last_position))
+            if self._distance(nearest[1], self.last_position) <= self.MAX_MATCH_DISTANCE:
+                nearest_center_distance = abs(nearest[1][0] - 0.5)
+                if nearest_center_distance <= best_center_distance + self.STICKINESS_MARGIN:
+                    self.last_position = nearest[1]
+                    return nearest[0]
+                # Someone else is now clearly more centered -- re-anchor below.
+
+        self.last_position = best_center[1]
+        return best_center[0]
 
 
-def analyze_video(video_path, output_csv_path, show_display=True):
+def analyze_video(video_path, output_csv_path, show_display=True,
+                   save_annotated_video=False, annotated_video_path=None):
     """
     Process a Clean & Jerk video and produce a CSV of upper-limb features.
 
@@ -100,6 +192,12 @@ def analyze_video(video_path, output_csv_path, show_display=True):
         video_path:     Input video file (.mp4 / .mov).
         output_csv_path: Where to write the per-frame analysis CSV.
         show_display:   If True, opens a window showing real-time overlay.
+        save_annotated_video: If True, saves the arm/shoulder/elbow overlay
+            to an .mp4 file so it can be reviewed after the run, instead of
+            only a transient live window. Off by default since batch runs
+            process many videos and shouldn't pay this cost unless asked.
+        annotated_video_path: Where to save it. Defaults to
+            ANNOTATED_VIDEO_DIR/{video_stem}_module3_annotated.mp4.
 
     Returns:
         pandas.DataFrame of the extracted features.
@@ -122,6 +220,37 @@ def analyze_video(video_path, output_csv_path, show_display=True):
     fps       = cap.get(cv2.CAP_PROP_FPS) or 30
     frame_idx = 0
     data      = []
+    tracker   = PersonTracker()
+
+    writer = None
+    if save_annotated_video:
+        if annotated_video_path is None:
+            stem = os.path.splitext(os.path.basename(video_path))[0].strip()
+            # Videos with the same filename can exist under different view
+            # folders (e.g. "22good.mp4" under both angle/ and front/) --
+            # include the parent folder name so defaults never collide.
+            parent = os.path.basename(os.path.dirname(video_path)).strip() or "video"
+            annotated_video_path = os.path.join(
+                ANNOTATED_VIDEO_DIR, f"{parent}_{stem}_module3_annotated.mp4"
+            )
+        try:
+            os.makedirs(os.path.dirname(annotated_video_path), exist_ok=True)
+            width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            # Write at fps/FRAME_SKIP since we only process every FRAME_SKIP-th
+            # frame -- this keeps playback speed matching real time.
+            writer = cv2.VideoWriter(
+                annotated_video_path, cv2.VideoWriter_fourcc(*"mp4v"),
+                max(fps / FRAME_SKIP, 1), (width, height),
+            )
+            if not writer.isOpened():
+                print(f"Warning: could not open video writer for {annotated_video_path} "
+                      f"(missing/unsupported mp4v codec) -- continuing without saving annotated video.")
+                writer = None
+        except Exception as exc:
+            print(f"Warning: failed to set up annotated video writer ({exc}) -- "
+                  f"continuing without saving annotated video.")
+            writer = None
 
     with vision.PoseLandmarker.create_from_options(options) as landmarker:
         while cap.isOpened():
@@ -141,9 +270,9 @@ def analyze_video(video_path, output_csv_path, show_display=True):
             frame_idx += 1
 
             if result.pose_landmarks:
-                landmark_list = select_center_pose(result.pose_landmarks)
+                landmark_list = tracker.select(result.pose_landmarks)
                 if landmark_list is not None:
-                    draw_landmarks(frame, landmark_list)
+                    draw_arm_landmarks(frame, landmark_list)
 
                     def get_xy(idx):
                         lm = landmark_list[idx]
@@ -201,7 +330,7 @@ def analyze_video(video_path, output_csv_path, show_display=True):
                         "low_visibility_flag"  : low_visibility_flag,
                     })
 
-                    if show_display:
+                    if show_display or writer is not None:
                         sym_color = (0, 0, 255) if symmetry_flag else (0, 255, 0)
                         cv2.putText(frame, f"L Elbow: {left_elbow_angle}",
                                     (int(L_elbow[0]) - 70, int(L_elbow[1]) - 15),
@@ -220,6 +349,15 @@ def analyze_video(video_path, output_csv_path, show_display=True):
                         cv2.putText(frame, f"Frame: {frame_idx}",
                                     (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
 
+            if writer is not None:
+                try:
+                    writer.write(frame)
+                except Exception as exc:
+                    print(f"Warning: failed to write annotated video frame ({exc}) -- "
+                          f"disabling annotated video for the rest of this run.")
+                    writer.release()
+                    writer = None
+
             if show_display:
                 display_height = max(1, int(h * 1280 / w))
                 display_frame = cv2.resize(frame, (1280, display_height))
@@ -230,6 +368,8 @@ def analyze_video(video_path, output_csv_path, show_display=True):
     cap.release()
     if show_display:
         cv2.destroyAllWindows()
+    if writer is not None:
+        writer.release()
 
     df = pd.DataFrame(data)
     os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
@@ -243,6 +383,11 @@ def analyze_video(video_path, output_csv_path, show_display=True):
     print(f"Asymmetry flags        : {df['asymmetry_flag'].sum()} frames")
     print(f"Incomplete lockout     : {df['lockout_flag'].sum()} frames")
     print(f"CSV saved -> {output_csv_path}")
+    if save_annotated_video:
+        if os.path.exists(annotated_video_path):
+            print(f"Annotated video saved -> {annotated_video_path}")
+        else:
+            print("Annotated video was NOT saved (see warning above).")
 
     return df
 

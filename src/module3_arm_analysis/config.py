@@ -8,6 +8,7 @@ import os
 BASE_DIR    = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR    = os.path.join(BASE_DIR, "data")
 OUTPUT_DIR  = os.path.join(BASE_DIR, "reports", "figures", "module3")
+ANNOTATED_VIDEO_DIR = os.path.join(BASE_DIR, "reports", "annotated_videos")
 MODEL_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pose_landmarker_full.task")
 
 MODEL_URL = (

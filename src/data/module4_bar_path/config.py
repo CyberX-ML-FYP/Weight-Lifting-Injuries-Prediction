@@ -46,12 +46,12 @@ class BarPathConfig:
             self.root_dir / "data" / "raw" / "videos" / "front",
         )
         object.__setattr__(
-            self, "interim_output_dir", self.root_dir / "data" / "interim" / "bar_path"
+            self, "interim_output_dir", self.root_dir / "data" / "interim" / "module4"
         )
         object.__setattr__(
             self,
             "processed_output_dir",
-            self.root_dir / "data" / "processed" / "bar_path",
+            self.root_dir / "data" / "processed" / "module4",
         )
         object.__setattr__(
             self,

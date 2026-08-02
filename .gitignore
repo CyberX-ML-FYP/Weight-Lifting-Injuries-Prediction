@@ -121,6 +121,11 @@ ENV/
 /data/features/
 /data/external/
 
-# Large generated data (raw/robustness test videos)
+/anchor_review/
+
+reports/figures/module4/verify/
+
+reports/figures/module4/skeleton_demo/
+
 /data/raw/hip_knee/
 /data/_robustness_tests/

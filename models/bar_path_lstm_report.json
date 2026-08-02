@@ -1,0 +1,20 @@
+{
+  "model": "lstm",
+  "n_samples": 58,
+  "sequence_length": 150,
+  "hidden_size": 32,
+  "cv_metrics": {
+    "n_folds": 5,
+    "accuracy": 0.7413793103448276,
+    "precision": 0.5714285714285714,
+    "recall": 1.0,
+    "f1": 0.7272727272727273,
+    "roc_auc": 1.0
+  },
+  "risk_bands": {
+    "Low": "< 0.33",
+    "Moderate": "0.33 - 0.66",
+    "High": ">= 0.66"
+  },
+  "caveat": "Trained and evaluated on only 58 sequences. CV metrics are honest (stratified k-fold, no leakage) but the sample size is too small to be confident the model generalises beyond this dataset. Compare directly against bar_path_rf_report.json / bar_path_xgb_report.json before deciding whether to include this model in an ensemble."
+}

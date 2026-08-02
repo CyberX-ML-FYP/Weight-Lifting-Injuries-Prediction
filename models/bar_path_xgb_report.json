@@ -1,0 +1,35 @@
+{
+  "model": "xgb",
+  "n_samples": 58,
+  "feature_columns": [
+    "max_deviation",
+    "avg_deviation",
+    "path_smoothness",
+    "peak_vertical_velocity",
+    "time_to_peak_velocity",
+    "total_displacement",
+    "jerk_like_movements"
+  ],
+  "cv_metrics": {
+    "n_folds": 5,
+    "accuracy": 0.7931034482758621,
+    "precision": 0.7857142857142857,
+    "recall": 0.55,
+    "f1": 0.6470588235294118,
+    "roc_auc": 0.8552631578947368
+  },
+  "feature_importances": {
+    "total_displacement": 0.24204537272453308,
+    "avg_deviation": 0.17426235973834991,
+    "peak_vertical_velocity": 0.17321811616420746,
+    "path_smoothness": 0.16356755793094635,
+    "time_to_peak_velocity": 0.12036503106355667,
+    "max_deviation": 0.06584091484546661,
+    "jerk_like_movements": 0.06070062518119812
+  },
+  "risk_bands": {
+    "Low": "< 0.33",
+    "Moderate": "0.33 - 0.66",
+    "High": ">= 0.66"
+  }
+}

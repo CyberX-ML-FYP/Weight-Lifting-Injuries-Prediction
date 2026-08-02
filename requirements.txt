@@ -31,3 +31,4 @@ python-multipart
 captum
 
 streamlit
+torch

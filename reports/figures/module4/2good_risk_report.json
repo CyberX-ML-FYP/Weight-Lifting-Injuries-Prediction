@@ -1,0 +1,24 @@
+{
+  "video_id": "2good",
+  "predicted_quality": "good",
+  "injury_risk_score": 0.142,
+  "injury_risk_band": "Low",
+  "per_model_risk_scores": {
+    "rf": 0.2171,
+    "xgb": 0.0668
+  },
+  "top_contributing_features": [
+    "jerk_like_movements",
+    "total_displacement",
+    "time_to_peak_velocity"
+  ],
+  "features": {
+    "max_deviation": 0.5609738243164061,
+    "avg_deviation": 0.11003421515076121,
+    "path_smoothness": 6.137482957481889e-05,
+    "peak_vertical_velocity": 0.0016792736399647034,
+    "time_to_peak_velocity": 0.9861111111111112,
+    "total_displacement": 2.4353067520507983,
+    "jerk_like_movements": 70.0
+  }
+}

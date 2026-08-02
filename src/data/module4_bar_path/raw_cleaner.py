@@ -57,6 +57,74 @@ OUTLIER_DISTANCE_THRESHOLD = 300.0
 OUTLIER_WINDOW = 9
 
 
+WRIST_SWAP_REFERENCE_WINDOW = 5   # frames of recent history used as the "expected" position
+WRIST_SWAP_MARGIN = 0.5           # swapped distance must be <= this fraction of as-is distance
+
+
+def fix_wrist_label_swaps(pdf: pd.DataFrame) -> pd.DataFrame:
+    """MediaPipe occasionally swaps its left_wrist/right_wrist landmark
+    labels for a frame or two -- most often when the arms cross near the
+    face during the catch. bar_x/bar_y (the L+R midpoint) is unaffected
+    since swapping two values doesn't change their average, which is why
+    this went unnoticed until a chart that reads each wrist individually
+    (render_wrist_deviation_chart) showed sharp, suspiciously symmetric
+    spikes at the same few frames in an otherwise smooth trajectory.
+
+    Fix: walk forward frame by frame; at each frame, compare "as labelled"
+    vs "swapped" distance to a short rolling median of the last few
+    ALREADY-CORRECTED frames (not just frame i-1). A median reference
+    avoids poisoning every later comparison from a single wrong call, the
+    way comparing to i-1 alone would. Only swap when it's a clear win
+    (swapped distance <= WRIST_SWAP_MARGIN of as-is distance) -- when the
+    two wrists are genuinely close together (hands near each other through
+    much of the lift), "swap" and "no swap" are nearly equally plausible
+    move-for-move, and forcing a choice there just flip-flops on noise.
+    That exact failure mode showed up as 200-380 "corrections" on a few
+    videos before this margin was added, versus 1-10 on lifts with an
+    isolated genuine swap.
+    """
+    pdf = pdf.copy()
+    left_x = pdf["left_wrist_x"].to_numpy(dtype=float)
+    left_y = pdf["left_wrist_y"].to_numpy(dtype=float)
+    right_x = pdf["right_wrist_x"].to_numpy(dtype=float)
+    right_y = pdf["right_wrist_y"].to_numpy(dtype=float)
+
+    n_swapped = 0
+    for i in range(1, len(pdf)):
+        if np.isnan(left_x[i]) or np.isnan(right_x[i]):
+            continue
+
+        window_start = max(0, i - WRIST_SWAP_REFERENCE_WINDOW)
+        ref_left_x = np.nanmedian(left_x[window_start:i])
+        ref_left_y = np.nanmedian(left_y[window_start:i])
+        ref_right_x = np.nanmedian(right_x[window_start:i])
+        ref_right_y = np.nanmedian(right_y[window_start:i])
+        if np.isnan(ref_left_x) or np.isnan(ref_right_x):
+            continue
+
+        dist_as_is = (
+            (left_x[i] - ref_left_x) ** 2 + (left_y[i] - ref_left_y) ** 2
+            + (right_x[i] - ref_right_x) ** 2 + (right_y[i] - ref_right_y) ** 2
+        )
+        dist_swapped = (
+            (right_x[i] - ref_left_x) ** 2 + (right_y[i] - ref_left_y) ** 2
+            + (left_x[i] - ref_right_x) ** 2 + (left_y[i] - ref_right_y) ** 2
+        )
+
+        if dist_as_is > 1e-9 and dist_swapped <= WRIST_SWAP_MARGIN * dist_as_is:
+            left_x[i], right_x[i] = right_x[i], left_x[i]
+            left_y[i], right_y[i] = right_y[i], left_y[i]
+            n_swapped += 1
+
+    if n_swapped:
+        pdf["left_wrist_x"] = left_x
+        pdf["left_wrist_y"] = left_y
+        pdf["right_wrist_x"] = right_x
+        pdf["right_wrist_y"] = right_y
+
+    return pdf, n_swapped
+
+
 def clean_raw_landmarks(raw_df: pd.DataFrame, config: BarPathConfig, video_id: str) -> pd.DataFrame:
     """Clean one video's raw landmark rows into a smoothed, normalised
     bar-path coordinate series covering only the detected lift phase."""
@@ -79,6 +147,10 @@ def clean_raw_landmarks(raw_df: pd.DataFrame, config: BarPathConfig, video_id: s
     if pdf.empty:
         logger.warning("No valid frames left after visibility filtering for %s", video_id)
         return pdf
+
+    pdf, n_swapped = fix_wrist_label_swaps(pdf)
+    if n_swapped:
+        logger.info("%s: corrected %s left/right wrist label swap(s)", video_id, n_swapped)
 
     pdf[COORDINATE_COLUMNS] = pdf[COORDINATE_COLUMNS].interpolate(
         method="linear", limit_direction="both"

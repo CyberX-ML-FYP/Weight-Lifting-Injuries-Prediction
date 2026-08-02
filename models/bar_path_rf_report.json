@@ -1,0 +1,35 @@
+{
+  "model": "rf",
+  "n_samples": 58,
+  "feature_columns": [
+    "max_deviation",
+    "avg_deviation",
+    "path_smoothness",
+    "peak_vertical_velocity",
+    "time_to_peak_velocity",
+    "total_displacement",
+    "jerk_like_movements"
+  ],
+  "cv_metrics": {
+    "n_folds": 5,
+    "accuracy": 0.8103448275862069,
+    "precision": 0.7647058823529411,
+    "recall": 0.65,
+    "f1": 0.7027027027027027,
+    "roc_auc": 0.8631578947368421
+  },
+  "feature_importances": {
+    "total_displacement": 0.21077300491473225,
+    "avg_deviation": 0.19165103439180667,
+    "peak_vertical_velocity": 0.13481657893119706,
+    "jerk_like_movements": 0.13435627138856834,
+    "time_to_peak_velocity": 0.11885337119257161,
+    "path_smoothness": 0.11595752349591142,
+    "max_deviation": 0.09359221568521274
+  },
+  "risk_bands": {
+    "Low": "< 0.33",
+    "Moderate": "0.33 - 0.66",
+    "High": ">= 0.66"
+  }
+}

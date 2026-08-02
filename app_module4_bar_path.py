@@ -1,13 +1,24 @@
 """
-Weight Lifting Injuries Prediction — Module 4 Demo
-Streamlit frontend for the bar-path / injury-risk module.
+Weight Lifting Injuries Prediction — Module 4 component.
+Streamlit UI for the bar-path / injury-risk module.
 
-Standalone app kept separate from the repo-root app.py (Module 3's
-Streamlit frontend) to avoid filename collision and cross-module merge
-risk. Proposing a single unified multi-module app is future work once
-every module has a stable predict() entry point.
+This file is a COMPONENT, not a standalone page: render_module4_tab() is
+the single public entry point and does all the rendering. Nothing at
+import time calls st.set_page_config, st.title, or any other top-level
+Streamlit command -- that's what let this collide with Module 3's app.py
+before (both defined st.set_page_config, and both reused the same widget
+keys like "demo_run"/"front_up"/"upload_run", which Streamlit's global
+widget-key namespace does not allow even across different tabs). All
+widget keys here are namespaced with the M4_KEY_PREFIX below so they can
+never collide with another module's identically-named widgets again.
 
-Run with: streamlit run app_module4_bar_path.py
+Usage from a main integrator app:
+    from app_module4_bar_path import render_module4_tab
+    with st.tabs(["Module 3", "Module 4"])[1]:
+        render_module4_tab()
+
+Running standalone for your own testing still works:
+    streamlit run app_module4_bar_path.py
 
 Author: Senarathna G.G.P.C. (214189E) — Module 4
 """
@@ -35,7 +46,10 @@ from src.data.module4_bar_path.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-st.set_page_config(page_title="Module 4 — Bar Path & Injury Risk", page_icon="🏋️", layout="wide")
+# Every st.*(key=...) in this file uses f"{M4_KEY_PREFIX}...", so this
+# module's widgets can never collide with another module's, no matter what
+# they happen to name theirs.
+M4_KEY_PREFIX = "m4_"
 
 FEATURE_LABELS = {
     "max_deviation": "Max horizontal bar deviation",
@@ -274,166 +288,181 @@ def render_wrist_deviation_chart(cleaned_df: pd.DataFrame | None) -> None:
     plt.close(fig)
 
 
-st.title("🏋️ Clean & Jerk — Bar Path & Injury Risk Analysis")
-st.write(
-    "**Module 4** of the Weight Lifting Injuries Prediction project. "
-    "Tracks the barbell's path from a **front-view** video and estimates injury risk from "
-    "how far and how erratically the bar strayed from an ideal vertical line, using an "
-    "ensemble of Random Forest and XGBoost models trained on 58 labelled lifts."
-)
-st.caption(
-    "This module analyses the **front view only** — side and 45° views are used by the "
-    "other three modules (trunk, hip/knee, arm) in this project, not by bar-path tracking."
-)
-
-tab_demo, tab_upload, tab_about = st.tabs(["🎬 Try a demo lift", "📤 Upload your own video", "ℹ️ About the model"])
-
-with tab_demo:
-    st.write("Pick one of 6 pre-processed example lifts for an instant result.")
-    choice = st.selectbox("Demo lift", list(DEMO_LIFTS.keys()))
-    video_id = DEMO_LIFTS[choice]
-
-    if st.button("Run prediction", key="demo_run"):
-        features_table = load_features_table()
-        row = features_table[features_table["video_id"] == video_id]
-        if row.empty:
-            st.error("Demo lift not found in bar_path_features.csv. Was the feature table regenerated?")
-        else:
-            lift_features = row[["video_id"] + FEATURE_COLUMNS].reset_index(drop=True)
-            true_label = "good" if row.iloc[0]["label"] == 0 else "bad"
-            st.caption(f"Ground truth label for this demo lift (from filename): **{true_label}**")
-
-            report = predict_from_features(lift_features)
-            render_risk_banner(report)
-            render_model_breakdown(report)
-
-            video_col, chart_col = st.columns([1, 1])
-            with video_col:
-                show_skeleton = st.checkbox("Show tracked landmarks", value=True, key="demo_skeleton_toggle")
-                skeleton_path = find_demo_skeleton_video_path(video_id) if show_skeleton else None
-                if skeleton_path:
-                    st.video(str(skeleton_path))
-                    st.caption("Green skeleton = the lifter MediaPipe selected and tracked, trimmed to the lifting phase.")
-                else:
-                    demo_video_path = find_demo_video_path(video_id)
-                    if demo_video_path:
-                        st.video(str(demo_video_path))
-                        if show_skeleton:
-                            st.caption("No pre-rendered skeleton video for this lift — showing the source video instead.")
-                    else:
-                        st.info("Source video not found on disk for this demo lift.")
-            with chart_col:
-                render_top_features(report)
-
-            cleaned_df = load_cleaned_coords(video_id)
-            render_bar_path_chart(cleaned_df)
-            render_wrist_deviation_chart(cleaned_df)
-
-with tab_upload:
+def render_module4_tab() -> None:
+    """Render the full Module 4 UI (title, description, demo/upload/about
+    tabs) into whatever container is currently active. Call this from
+    inside a `with st.tabs(...)[i]:` block (or any other container) in a
+    main integrator app -- it does not create its own page or call
+    st.set_page_config, so it composes safely alongside other modules."""
+    st.title("🏋️ Clean & Jerk — Bar Path & Injury Risk Analysis")
     st.write(
-        "Upload a **front-view** video of a single clean & jerk attempt. "
-        "Processing runs pose estimation frame by frame and typically takes 10-30 seconds."
+        "**Module 4** of the Weight Lifting Injuries Prediction project. "
+        "Tracks the barbell's path from a **front-view** video and estimates injury risk from "
+        "how far and how erratically the bar strayed from an ideal vertical line, using an "
+        "ensemble of Random Forest and XGBoost models trained on 58 labelled lifts."
     )
-    front_file = st.file_uploader("Front view", type=["mp4", "mov"], key="front_up")
+    st.caption(
+        "This module analyses the **front view only** — side and 45° views are used by the "
+        "other three modules (trunk, hip/knee, arm) in this project, not by bar-path tracking."
+    )
 
-    if st.button("Run prediction", key="upload_run"):
-        if front_file is None:
-            st.warning("Upload a front-view video first.")
-        else:
-            # Write to a PERSISTENT scratch dir, not a TemporaryDirectory --
-            # st.video() is only reliably playable in the browser when given
-            # a file PATH (it streams it with proper HTTP range-request
-            # support, matching what the demo tab already does successfully).
-            # Passing raw bytes instead worked in principle but was the
-            # actual cause of "video won't play" here: by the time
-            # st.video(bytes(...)) ran, either the source had already been
-            # deleted (TemporaryDirectory closes as soon as the `with` block
-            # exits) or the browser couldn't seek/range-request a bytes blob
-            # the way it can a served file. Old uploads are cleared each run
-            # so this directory doesn't grow unbounded.
-            config = BarPathConfig()
-            upload_dir = config.interim_output_dir / "app_uploads"
-            upload_dir.mkdir(parents=True, exist_ok=True)
-            for old_file in upload_dir.glob("*"):
-                old_file.unlink(missing_ok=True)
+    tab_demo, tab_upload, tab_about = st.tabs(["🎬 Try a demo lift", "📤 Upload your own video", "ℹ️ About the model"])
 
-            video_path = upload_dir / front_file.name
-            video_path.write_bytes(front_file.getbuffer())
+    with tab_demo:
+        st.write("Pick one of 6 pre-processed example lifts for an instant result.")
+        choice = st.selectbox("Demo lift", list(DEMO_LIFTS.keys()), key=f"{M4_KEY_PREFIX}demo_select")
+        video_id = DEMO_LIFTS[choice]
 
-            skeleton_path = None
-            try:
-                with st.status("Analysing bar path...", expanded=True) as status:
-                    st.write("Extracting pose landmarks frame by frame...")
-                    raw_df = extract_step(video_path, config)
+        if st.button("Run prediction", key=f"{M4_KEY_PREFIX}demo_run"):
+            features_table = load_features_table()
+            row = features_table[features_table["video_id"] == video_id]
+            if row.empty:
+                st.error("Demo lift not found in bar_path_features.csv. Was the feature table regenerated?")
+            else:
+                lift_features = row[["video_id"] + FEATURE_COLUMNS].reset_index(drop=True)
+                true_label = "good" if row.iloc[0]["label"] == 0 else "bad"
+                st.caption(f"Ground truth label for this demo lift (from filename): **{true_label}**")
 
-                    st.write("Detecting lift phase and cleaning the trajectory...")
-                    cleaned_df = clean_step(raw_df, config, video_path.stem)
-
-                    st.write("Computing bar-path features...")
-                    lift_features = summarize_step(cleaned_df, video_path.stem)
-
-                    st.write("Scoring with the model ensemble...")
-                    report = predict_from_features(lift_features, config)
-
-                    st.write("Rendering tracked-landmark video...")
-                    candidate_skeleton_path = upload_dir / f"{video_path.stem}_skeleton.mp4"
-                    try:
-                        render_skeleton_video(video_path, candidate_skeleton_path, config)
-                        skeleton_path = candidate_skeleton_path
-                    except Exception:
-                        logger.exception("Skeleton video rendering failed for %s", video_path.name)
-
-                    status.update(label="Done", state="complete", expanded=False)
-            except Exception as exc:
-                st.error(f"Processing failed: {exc}")
-                report, cleaned_df = None, None
-
-            if report:
+                report = predict_from_features(lift_features)
                 render_risk_banner(report)
                 render_model_breakdown(report)
 
                 video_col, chart_col = st.columns([1, 1])
                 with video_col:
-                    show_skeleton = st.checkbox("Show tracked landmarks", value=True, key="upload_skeleton_toggle")
-                    if show_skeleton and skeleton_path:
+                    show_skeleton = st.checkbox(
+                        "Show tracked landmarks", value=True, key=f"{M4_KEY_PREFIX}demo_skeleton_toggle"
+                    )
+                    skeleton_path = find_demo_skeleton_video_path(video_id) if show_skeleton else None
+                    if skeleton_path:
                         st.video(str(skeleton_path))
                         st.caption("Green skeleton = the lifter MediaPipe selected and tracked, trimmed to the lifting phase.")
                     else:
-                        st.video(str(video_path))
-                        if show_skeleton:
-                            st.caption("Landmark tracking failed for this video — showing the original upload instead.")
+                        demo_video_path = find_demo_video_path(video_id)
+                        if demo_video_path:
+                            st.video(str(demo_video_path))
+                            if show_skeleton:
+                                st.caption("No pre-rendered skeleton video for this lift — showing the source video instead.")
+                        else:
+                            st.info("Source video not found on disk for this demo lift.")
                 with chart_col:
                     render_top_features(report)
 
+                cleaned_df = load_cleaned_coords(video_id)
                 render_bar_path_chart(cleaned_df)
                 render_wrist_deviation_chart(cleaned_df)
 
-with tab_about:
-    st.write(
-        "**Models:** Random Forest + XGBoost ensemble (simple average of predicted probabilities), "
-        "trained on 58 labelled lifts (38 good / 20 bad)."
-    )
-    st.write("**Cross-validated accuracy:** ~81% (RF), ~79% (XGBoost), 5-fold stratified.")
-    st.write(
-        "An Attention-LSTM was also built and evaluated on the raw per-frame bar trajectory, but "
-        "excluded from the ensemble: with only 58 training sequences its predictions were unreliable "
-        "(low-confidence, all crammed into a narrow probability band). It will be revisited once more "
-        "labelled videos are available."
-    )
+    with tab_upload:
+        st.write(
+            "Upload a **front-view** video of a single clean & jerk attempt. "
+            "Processing runs pose estimation frame by frame and typically takes 10-30 seconds."
+        )
+        front_file = st.file_uploader("Front view", type=["mp4", "mov"], key=f"{M4_KEY_PREFIX}front_up")
 
-    st.subheader("Features used")
-    for feature in FEATURE_COLUMNS:
-        st.markdown(f"**{FEATURE_LABELS.get(feature, feature)}** — {FEATURE_EXPLANATIONS.get(feature, '')}")
+        if st.button("Run prediction", key=f"{M4_KEY_PREFIX}upload_run"):
+            if front_file is None:
+                st.warning("Upload a front-view video first.")
+            else:
+                # Write to a PERSISTENT scratch dir, not a TemporaryDirectory --
+                # st.video() is only reliably playable in the browser when given
+                # a file PATH (it streams it with proper HTTP range-request
+                # support, matching what the demo tab already does successfully).
+                # Passing raw bytes instead worked in principle but was the
+                # actual cause of "video won't play" here: by the time
+                # st.video(bytes(...)) ran, either the source had already been
+                # deleted (TemporaryDirectory closes as soon as the `with` block
+                # exits) or the browser couldn't seek/range-request a bytes blob
+                # the way it can a served file. Old uploads are cleared each run
+                # so this directory doesn't grow unbounded.
+                config = BarPathConfig()
+                upload_dir = config.interim_output_dir / "app_uploads"
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                for old_file in upload_dir.glob("*"):
+                    old_file.unlink(missing_ok=True)
 
-    st.subheader("Risk bands")
-    st.markdown(
-        "- **Low** — risk score < 33%\n"
-        "- **Moderate** — 33% – 66%\n"
-        "- **High** — risk score ≥ 66%"
-    )
+                video_path = upload_dir / front_file.name
+                video_path.write_bytes(front_file.getbuffer())
 
-    st.caption(
-        "There is no clinical injury-outcome dataset behind this project — only coach-assigned "
-        "good/bad technique labels. Injury risk here is a mechanically-motivated proxy (poor bar "
-        "control implies more compensation from the back/shoulders), not a validated medical prediction."
-    )
+                skeleton_path = None
+                try:
+                    with st.status("Analysing bar path...", expanded=True) as status:
+                        st.write("Extracting pose landmarks frame by frame...")
+                        raw_df = extract_step(video_path, config)
+
+                        st.write("Detecting lift phase and cleaning the trajectory...")
+                        cleaned_df = clean_step(raw_df, config, video_path.stem)
+
+                        st.write("Computing bar-path features...")
+                        lift_features = summarize_step(cleaned_df, video_path.stem)
+
+                        st.write("Scoring with the model ensemble...")
+                        report = predict_from_features(lift_features, config)
+
+                        st.write("Rendering tracked-landmark video...")
+                        candidate_skeleton_path = upload_dir / f"{video_path.stem}_skeleton.mp4"
+                        try:
+                            render_skeleton_video(video_path, candidate_skeleton_path, config)
+                            skeleton_path = candidate_skeleton_path
+                        except Exception:
+                            logger.exception("Skeleton video rendering failed for %s", video_path.name)
+
+                        status.update(label="Done", state="complete", expanded=False)
+                except Exception as exc:
+                    st.error(f"Processing failed: {exc}")
+                    report, cleaned_df = None, None
+
+                if report:
+                    render_risk_banner(report)
+                    render_model_breakdown(report)
+
+                    video_col, chart_col = st.columns([1, 1])
+                    with video_col:
+                        show_skeleton = st.checkbox(
+                            "Show tracked landmarks", value=True, key=f"{M4_KEY_PREFIX}upload_skeleton_toggle"
+                        )
+                        if show_skeleton and skeleton_path:
+                            st.video(str(skeleton_path))
+                            st.caption("Green skeleton = the lifter MediaPipe selected and tracked, trimmed to the lifting phase.")
+                        else:
+                            st.video(str(video_path))
+                            if show_skeleton:
+                                st.caption("Landmark tracking failed for this video — showing the original upload instead.")
+                    with chart_col:
+                        render_top_features(report)
+
+                    render_bar_path_chart(cleaned_df)
+                    render_wrist_deviation_chart(cleaned_df)
+
+    with tab_about:
+        st.write(
+            "**Models:** Random Forest + XGBoost ensemble (simple average of predicted probabilities), "
+            "trained on 58 labelled lifts (38 good / 20 bad)."
+        )
+        st.write("**Cross-validated accuracy:** ~81% (RF), ~79% (XGBoost), 5-fold stratified.")
+        st.write(
+            "An Attention-LSTM was also built and evaluated on the raw per-frame bar trajectory, but "
+            "excluded from the ensemble: with only 58 training sequences its predictions were unreliable "
+            "(low-confidence, all crammed into a narrow probability band). It will be revisited once more "
+            "labelled videos are available."
+        )
+
+        st.subheader("Features used")
+        for feature in FEATURE_COLUMNS:
+            st.markdown(f"**{FEATURE_LABELS.get(feature, feature)}** — {FEATURE_EXPLANATIONS.get(feature, '')}")
+
+        st.subheader("Risk bands")
+        st.markdown(
+            "- **Low** — risk score < 33%\n"
+            "- **Moderate** — 33% – 66%\n"
+            "- **High** — risk score ≥ 66%"
+        )
+
+        st.caption(
+            "There is no clinical injury-outcome dataset behind this project — only coach-assigned "
+            "good/bad technique labels. Injury risk here is a mechanically-motivated proxy (poor bar "
+            "control implies more compensation from the back/shoulders), not a validated medical prediction."
+        )
+
+
+if __name__ == "__main__":
+    st.set_page_config(page_title="Module 4 — Bar Path & Injury Risk", page_icon="🏋️", layout="wide")
+    render_module4_tab()

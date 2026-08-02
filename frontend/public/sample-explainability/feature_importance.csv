@@ -1,0 +1,12 @@
+feature,normalized_importance,importance_pct,source_field,source_value,description
+Confidence,0.125595,12.56,prediction_confidence,0.522233784198761,The LSTM's own softmax confidence in the predicted class.
+Anthropometric Features,0.102412,10.24,leg_length_reference_px,601.8157609381642,Leg/torso-length reference and the linear ROM/peak-velocity features normalized by it.
+Knee ROM,0.091332,9.13,knee_rom,46.718524959408285,Angular range of motion of the knee joint across the lift (degrees).
+Knee Peak,0.091332,9.13,knee_peak,181.76287866066053,Peak knee flexion angle reached during the lift (degrees).
+Sequential Delay,0.085777,8.58,synchronization_delay,0.0,Rule A - timing delay (s) between peak knee and peak hip angular velocity.
+Synchronization,0.085777,8.58,rule_c_score,99.90284139054252,Rule C score (0-100) - how closely the hip and knee velocity signals move together.
+Hip Dominance,0.085777,8.58,rule_b_score,9.063201055371998,Rule B score (0-100) - ratio of peak hip to peak knee angular velocity.
+Correlation,0.085777,8.58,correlation,0.9964037477166987,Rule C raw Pearson correlation coefficient between hip and knee angular velocity.
+RFD,0.085777,8.58,rate_of_force_development,0.9952626497930227,Rule D - ratio of peak hip to peak knee angular acceleration (rate-of-force-development proxy).
+Hip ROM,0.080222,8.02,hip_rom,43.97989747935128,Angular range of motion of the hip joint across the lift (degrees).
+Hip Peak,0.080222,8.02,hip_peak,179.37310837649994,Peak hip flexion angle reached during the lift (degrees).

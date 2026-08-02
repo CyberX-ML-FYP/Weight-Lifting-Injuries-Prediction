@@ -37,7 +37,7 @@ def _label_from_stem(stem: str) -> Optional[int]:
     return 0 if match.group(1).lower() == "good" else 1
 
 
-def _aggregate_module1_video(df: pd.DataFrame, video_id: str, view: str) -> Dict[str, Any]:
+def aggregate_module1_video(df: pd.DataFrame, video_id: str, view: str) -> Dict[str, Any]:
     df = df.sort_values("frame_index")
 
     lift_df = df[df["in_lift_phase"]]
@@ -78,7 +78,7 @@ def build_module1_master_features() -> pd.DataFrame:
         for path in sorted(glob.glob(os.path.join(view_dir, "*.csv"))):
             video_id = os.path.splitext(os.path.basename(path))[0]
             df = pd.read_csv(path)
-            rows.append(_aggregate_module1_video(df, video_id, view))
+            rows.append(aggregate_module1_video(df, video_id, view))
 
     master = pd.DataFrame(rows)
 
